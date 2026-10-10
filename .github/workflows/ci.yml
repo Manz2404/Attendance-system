@@ -21,10 +21,15 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: '1'
   mysql:
+    name: mysql-${{ matrix.version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['5.5.42', '8.4']
     services:
       mysql:
-        image: mysql:8.4
+        image: mysql:${{ matrix.version }}
         env:
           MYSQL_ROOT_PASSWORD: ci-only-root-password
           MYSQL_DATABASE: hadir_test_integration
@@ -44,6 +49,7 @@ jobs:
       DB_NAME: hadir_test_integration
       DB_SSL: 'false'
       COOKIE_SECURE: 'false'
+      EXPECT_DB_VERSION: ${{ matrix.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

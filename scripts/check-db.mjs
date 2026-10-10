@@ -1,10 +1,13 @@
 import mysql from 'mysql2/promise';
 import { databaseOptions, loadLocalEnvironment, explainError } from './database.mjs';
+import { requireCompatibleVersion } from '../lib/database-version.mjs';
 export async function checkDatabase(connection) {
   const [[row]] = await connection.query('SELECT VERSION() AS version, DATABASE() AS databaseName');
-  const maria = row.version.includes('MariaDB');
-  const [major, minor] = row.version.split('.').map(Number);
-  if ((!maria && major < 8) || (maria && (major < 10 || (major === 10 && minor < 6)))) throw new Error(`Your server is ${row.version}. Use MySQL 8.0+ (or MariaDB 10.6+) for this application.`);
+  requireCompatibleVersion(row.version);
+  const [engines] = await connection.query('SHOW ENGINES');
+  if (!engines.some(engine => engine.Engine.toLowerCase() === 'innodb' && ['YES', 'DEFAULT'].includes(engine.Support.toUpperCase()))) throw new Error('This MySQL server needs InnoDB enabled for attendance transactions.');
+  const [collations] = await connection.query("SHOW COLLATION WHERE Collation = 'utf8mb4_bin'");
+  if (!collations.length) throw new Error('This MySQL server needs the utf8mb4_bin collation for attendance text.');
   return row;
 }
 if (process.argv[1]?.endsWith('check-db.mjs')) {

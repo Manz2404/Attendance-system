@@ -24,7 +24,7 @@ This version includes employees, schedules, manual IN/OUT punches, CSV imports, 
      CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
    ```
 
-   You can use your existing MySQL server and account. A separate database keeps the attendance tables easy to manage. The app does not import or modify your other application's tables. It creates tables named `hadir_*` in the selected database. Use MySQL 8.0 or newer; MariaDB 10.6+ is also accepted by setup, but the automated database tests use MySQL 8.4.
+   You can use your existing MySQL server and account. A separate database keeps the attendance tables easy to manage. The app does not import or modify your other application's tables. It creates tables named `hadir_*` in the selected database. Use MySQL 5.5.42 or newer. Your existing MySQL 5.5.42 server is supported. MariaDB 10.6+ is also accepted by setup; automated database tests cover MySQL 5.5.42 and 8.4.
 
 4. Double-click **setup-windows.cmd**. It creates and opens `.env` on the first run. Enter the same connection details you use in SQLyog, then save and close Notepad:
 
@@ -101,6 +101,12 @@ Run commands from `C:\Attendance-system`:
 
 For a remote MySQL connection requiring TLS, set `DB_SSL=true`; set `DB_SSL_CA` to your CA certificate path if required. TLS verification stays enabled. `COOKIE_SECURE=false` is for local HTTP; only change it to `true` when the browser uses HTTPS.
 
+## Updating from the original MySQL 8.0 setup requirement
+
+Version 0.2.1 supports the existing MySQL 5.5.42 server. Update the application files, keep your existing `.env`, then run `setup-windows.cmd` again. The schema is unchanged, so this fix does not require a server upgrade or a new database.
+
+If you installed by downloading ZIP, extract the updated ZIP and copy its contents into `C:\Attendance-system`, replacing the application files. The ZIP contains `.env.example` but no `.env`, so your saved connection details are kept.
+
 ## Updating and backups
 
 Back up the MySQL database using SQLyog before updates. Source control backs up code, not attendance records. Keep a separate secure backup of `.env`.
@@ -134,7 +140,7 @@ Migration files are checksummed and applied explicitly during setup/update, neve
 
 ## Verification and device integration
 
-GitHub Actions in `.github/workflows/ci.yml` runs the unit tests, TypeScript check and production build on Windows, plus controller/authentication integration tests against a disposable MySQL 8.4 service. These tests cover transaction rollback, duplicate and concurrent imports, account isolation, samples, hashed sessions, password reset, login limits and database persistence. Check the Actions tab for the current result.
+GitHub Actions in `.github/workflows/ci.yml` runs the unit tests, TypeScript check and production build on Windows, plus controller/authentication integration tests against disposable MySQL 5.5.42 and 8.4 services. These tests cover transaction rollback, duplicate and concurrent imports, account isolation, samples, hashed sessions, password reset, login limits and database persistence. Check the Actions tab for the current result.
 
 To run the MySQL suite manually, use a **new disposable database named `hadir_test_<name>`** with test connection environment variables, then run `npm run test:mysql`. The suite refuses a regular attendance database and leaves its test data there; it does not reset your real database.
 

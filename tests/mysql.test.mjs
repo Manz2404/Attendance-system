@@ -7,6 +7,7 @@ import { build } from 'esbuild';
 import mysql from 'mysql2/promise';
 import { databaseOptions, loadLocalEnvironment } from '../scripts/database.mjs';
 import { migrate } from '../scripts/migrate.mjs';
+import { checkDatabase } from '../scripts/check-db.mjs';
 import { createAdmin } from '../scripts/admin.mjs';
 import { hashToken } from '../lib/password.mjs';
 import { dateMY, addDays, localInstant } from '../lib/attendance.ts';
@@ -44,6 +45,11 @@ test('MySQL migrations, controller transactions and local authentication', async
   const password = 'integration-test-password!', day = addDays(dateMY(), -7);
   const inTime = localInstant(day, '09:00'), outTime = localInstant(day, '18:00');
   try {
+    await t.test('the configured MySQL version supports InnoDB and utf8mb4', async () => {
+      const server = await checkDatabase(connection);
+      console.log('Integration database:', server.version);
+      if (process.env.EXPECT_DB_VERSION) assert.ok(server.version.startsWith(process.env.EXPECT_DB_VERSION), `Expected ${process.env.EXPECT_DB_VERSION}, got ${server.version}`);
+    });
     await t.test('schema creates once and migration reruns safely', async () => {
       assert.equal(await migrate(connection), true); assert.equal(await migrate(connection), false);
       const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 9);
@@ -67,10 +73,10 @@ test('MySQL migrations, controller transactions and local authentication', async
       const result = await get(); assert.equal(result.data.schedules.length, 1); schedule = result.data.schedules[0];
     });
     await t.test('employee creation, booleans, uniqueness and schedule validation', async () => {
-      const body = { action: 'employee', code: 'EMP-001', name: 'Test Employee', department: 'Support', scheduleId: schedule.id, deviceUserId: '', active: true, startDate: addDays(day, -30) };
+      const body = { action: 'employee', code: 'EMP-001', name: 'Test Employee 🧑‍💻', department: 'Support', scheduleId: schedule.id, deviceUserId: '', active: true, startDate: addDays(day, -30) };
       assert.equal((await post(body)).status, 200); assert.equal((await post(body)).status, 400);
       assert.equal((await post({ ...body, code: 'EMP-002', scheduleId: 'unknown' })).status, 400);
-      employee = (await get()).data.employees[0]; assert.equal(employee.active, true); assert.equal(employee.isSample, false);
+      employee = (await get()).data.employees[0]; assert.equal(employee.active, true); assert.equal(employee.isSample, false); assert.equal(employee.name, body.name);
     });
     await t.test('invalid imports leave every row unsaved', async () => {
       const result = await post({ action: 'import', rows: [{ code: employee.code, timestamp: inTime, kind: 'IN' }, { code: 'UNKNOWN', timestamp: outTime, kind: 'OUT' }] });
