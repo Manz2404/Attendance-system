@@ -1,0 +1,13 @@
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { loadLocalEnvironment } from './database.mjs';
+loadLocalEnvironment();
+const port = Number(process.env.PORT || 3000);
+if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT in .env must be 1–65535.');
+const mode = process.argv[2] === 'dev' ? 'dev' : 'start';
+console.log(`Open http://127.0.0.1:${port} in your browser. Keep this window open; press Ctrl+C to stop.`);
+const require = createRequire(import.meta.url);
+const child = spawn(process.execPath, [require.resolve('next/dist/bin/next'), mode, '--hostname', '127.0.0.1', '--port', String(port)], { stdio: 'inherit', env: process.env });
+child.on('error', error => { console.error(error.message); process.exitCode = 1; });
+child.on('exit', code => { process.exitCode = code ?? 0; });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
