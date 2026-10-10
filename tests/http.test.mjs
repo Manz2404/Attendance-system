@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { request } from 'node:http';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 
@@ -32,15 +33,26 @@ test('production server accepts the browser Host without allowing other origins'
   child.stdout.on('data', record); child.stderr.on('data', record);
   child.on('error', error => { startError = error; });
   const stopped = new Promise(resolve => child.once('close', resolve));
-  const signIn = async (host, origin) => {
+  const signIn = (host, origin) => new Promise((resolve, reject) => {
     // Invalid credentials reach validation without reading or changing any database.
-    const response = await fetch(`${address}/api/auth/login`, {
+    const body = JSON.stringify({ username: 'ab', password: 'http-regression-probe' });
+    // fetch overrides a supplied Host with its connection address. Native HTTP
+    // keeps the browser Host while connecting directly to the IPv4 listener.
+    const req = request(`${address}/api/auth/login`, {
       method: 'POST', headers: { host, origin, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'ab', password: 'http-regression-probe' }),
-      signal: AbortSignal.timeout(10000),
+    }, response => {
+      let text = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => { text += chunk; });
+      response.on('error', reject);
+      response.on('end', () => {
+        try { resolve({ status: response.statusCode, data: JSON.parse(text) }); }
+        catch (error) { reject(error); }
+      });
     });
-    return { status: response.status, data: await response.json() };
-  };
+    req.setTimeout(10000, () => req.destroy(new Error('HTTP login test timed out.')));
+    req.on('error', reject); req.end(body);
+  });
   try {
     const deadline = Date.now() + 45000;
     let ready = false;
@@ -70,9 +82,9 @@ test('production server accepts the browser Host without allowing other origins'
       }
     });
   } finally {
-    if (child.exitCode === null) child.kill('SIGTERM');
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
     await Promise.race([stopped, delay(4000)]);
-    if (child.exitCode === null) {
+    if (child.exitCode === null && child.signalCode === null) {
       child.kill('SIGKILL');
       await Promise.race([stopped, delay(4000)]);
     }
