@@ -21,15 +21,11 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: '1'
   mysql:
-    name: mysql-${{ matrix.version }}
+    name: mysql-8.4
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        version: ['5.5.42', '8.4']
     services:
       mysql:
-        image: mysql:${{ matrix.version }}
+        image: mysql:8.4
         env:
           MYSQL_ROOT_PASSWORD: ci-only-root-password
           MYSQL_DATABASE: hadir_test_integration
@@ -49,7 +45,7 @@ jobs:
       DB_NAME: hadir_test_integration
       DB_SSL: 'false'
       COOKIE_SECURE: 'false'
-      EXPECT_DB_VERSION: ${{ matrix.version }}
+      EXPECT_DB_VERSION: '8.4'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,3 +54,49 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm test
       - run: npm run test:mysql
+  mysql55:
+    name: mysql-5.5.42
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: attendance_test
+      DB_PASSWORD: ci-only-test-password
+      DB_NAME: hadir_test_integration
+      DB_SSL: 'false'
+      COOKIE_SECURE: 'false'
+      EXPECT_DB_VERSION: '5.5.42'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Load the original MySQL 5.5.42 image in a current container format
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y skopeo
+          skopeo copy --format v2s2 docker://docker.io/library/mysql:5.5.42 docker-archive:/tmp/hadir-mysql55.tar:hadir-mysql55:5.5.42
+          docker load --input /tmp/hadir-mysql55.tar
+      - name: Start disposable MySQL 5.5.42
+        run: |
+          docker run --detach --name hadir-mysql55 --publish 127.0.0.1:3306:3306 \
+            --env MYSQL_ROOT_PASSWORD=ci-only-root-password \
+            --env MYSQL_DATABASE=hadir_test_integration \
+            --env MYSQL_USER=attendance_test \
+            --env MYSQL_PASSWORD=ci-only-test-password \
+            hadir-mysql55:5.5.42
+          for attempt in {1..60}; do
+            if docker exec hadir-mysql55 mysql --user=attendance_test --password=ci-only-test-password --database=hadir_test_integration --execute='SELECT VERSION();'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs hadir-mysql55
+          exit 1
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - run: npm run test:mysql
+      - name: Stop disposable database
+        if: always()
+        run: docker rm --force hadir-mysql55 || true
