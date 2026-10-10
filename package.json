@@ -1,6 +1,6 @@
 {
   "name": "hadir-attendance",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -17,7 +17,8 @@
     "admin:reset-password": "node scripts/admin.mjs --reset",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/attendance.test.mjs tests/security.test.mjs tests/database-version.test.mjs",
-    "test:mysql": "node --experimental-strip-types --test tests/mysql.test.mjs"
+    "test:mysql": "node --experimental-strip-types --test tests/mysql.test.mjs",
+    "test:http": "node --test tests/http.test.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

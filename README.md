@@ -88,6 +88,7 @@ Run commands from `C:\Attendance-system`:
 | `npm run build` | Build after changing or updating the code |
 | `npm start` | Start the built app |
 | `npm test` | Attendance and security unit tests |
+| `npm run test:http` | Check browser origins against the built local server |
 | `npm run typecheck` | TypeScript check |
 
 - **Connection refused:** start your MySQL Windows service; check its host and port in SQLyog and `.env`.
@@ -96,6 +97,7 @@ Run commands from `C:\Attendance-system`:
 - **SQLyog uses SSH or HTTP tunneling:** this app uses a direct MySQL connection. Establish an SSH tunnel locally and set `DB_HOST=127.0.0.1` and `DB_PORT` to its forwarded port, or configure direct access. SQLyog's HTTP tunnel is not an application connection.
 - **Port 3000 already used:** change `PORT` in `.env`, restart and use the new port.
 - **Forgot administrator password:** open Command Prompt here and run `npm run admin:reset-password`.
+- **Login says "This request is not allowed":** open `http://127.0.0.1:3000/login` using your configured port. Version 0.2.2 also accepts `http://localhost:3000` correctly. Update the application files, keep `.env`, stop the running server, run `setup-windows.cmd` to rebuild, then start it again.
 - **Already contains `hadir_` tables:** use another database if these tables belong to a different app. Setup refuses an untracked installation; it does not replace those tables.
 - **Internet needed:** the first dependency install needs internet. The app can then run locally while the configured MySQL server is available.
 

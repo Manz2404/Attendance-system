@@ -26,6 +26,23 @@ test('browser writes reject a different origin, including a different port', () 
   for (const origin of ['http://evil.example', 'http://127.0.0.1:4000', 'null']) assert.equal(allowedOrigin(new Request('http://127.0.0.1:3000/api', { headers: { origin } })), false);
   assert.equal(allowedOrigin(new Request('http://127.0.0.1:3000/api', { headers: { origin: 'http://127.0.0.1:3000' } })), true);
 });
+test('browser origin follows the HTTP Host when Next uses its bind address in the request URL', () => {
+  const request = (host, origin, url = 'http://127.0.0.1:3000/api') => new Request(url, { headers: { host, origin } });
+  assert.equal(allowedOrigin(request('localhost:3000', 'http://localhost:3000')), true);
+  assert.equal(allowedOrigin(request('127.0.0.1:3000', 'http://127.0.0.1:3000')), true);
+  assert.equal(allowedOrigin(request('localhost:3010', 'http://localhost:3010', 'http://127.0.0.1:3010/api')), true);
+  assert.equal(allowedOrigin(request('localhost:80', 'http://localhost', 'http://127.0.0.1/api')), true);
+  for (const origin of ['http://127.0.0.1:3000', 'http://localhost:4000', 'https://localhost:3000', 'http://evil.example', 'null', '']) {
+    assert.equal(allowedOrigin(request('localhost:3000', origin)), false, origin);
+  }
+  assert.equal(allowedOrigin(new Request('http://127.0.0.1:3000/api', { headers: { host: '127.0.0.1:3000', origin: 'http://evil.example', 'x-forwarded-host': 'evil.example' } })), false);
+});
+test('invalid Host authorities are rejected and requests without Origin retain their existing behavior', () => {
+  for (const host of ['', 'localhost:3000/path', 'localhost:3000@evil.example', 'localhost:3000?x=y', 'localhost:3000#fragment', 'localhost:3000\\@evil.example', 'localhost:3000, evil.example', 'localhost:bad']) {
+    assert.equal(allowedOrigin(new Request('http://127.0.0.1:3000/api', { headers: { host, origin: 'http://127.0.0.1:3000' } })), false, host);
+  }
+  assert.equal(allowedOrigin(new Request('http://127.0.0.1:3000/api')), true);
+});
 test('JSON reader limits bytes, validates objects and accepts a normal request', async () => {
   const request = body => new Request('http://localhost/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   assert.deepEqual(await readJSON(request('{"action":"initialize"}')), { action: 'initialize' });

@@ -20,6 +20,7 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+      - run: npm run test:http
   mysql:
     name: mysql-8.4
     runs-on: ubuntu-latest

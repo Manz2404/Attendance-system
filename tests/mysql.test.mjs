@@ -37,8 +37,8 @@ test('MySQL migrations, controller transactions and local authentication', async
     return { status: response.status, data: await response.json() };
   };
   const get = async () => { const response = await route.GET(); return { status: response.status, data: await response.json() }; };
-  const signIn = async (username, password) => {
-    const response = await login.POST(new Request('http://127.0.0.1:3000/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) }));
+  const signIn = async (username, password, headers = {}) => {
+    const response = await login.POST(new Request('http://127.0.0.1:3000/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ username, password }) }));
     return { status: response.status, data: await response.json() };
   };
   let owner, second, schedule, employee;
@@ -127,6 +127,13 @@ test('MySQL migrations, controller transactions and local authentication', async
       for (let i = 0; i < 5; i++) assert.equal((await signIn('second', 'incorrect-password')).status, 401);
       assert.equal((await signIn('second', password)).status, 429);
       assert.equal((await signIn('integration', password)).status, 200); assert.equal(globalThis.__createdSession, owner);
+    });
+    await t.test('browser credentials work on localhost and 127.0.0.1 while other origins are rejected', async () => {
+      for (const host of ['localhost:3000', '127.0.0.1:3000']) {
+        assert.equal((await signIn('integration', password, { host, origin: `http://${host}` })).status, 200);
+        assert.equal(globalThis.__createdSession, owner);
+      }
+      assert.equal((await signIn('integration', password, { host: 'localhost:3000', origin: 'http://evil.example' })).status, 403);
     });
     await t.test('sessions are hashed, expire and are revoked on logout', async () => {
       const jar = new Map(); globalThis.__cookieStore = { get: key => jar.get(key), set: (key, value, options) => jar.set(key, { value, ...options }), delete: key => jar.delete(key) };

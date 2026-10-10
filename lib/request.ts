@@ -1,7 +1,17 @@
 export function allowedOrigin(request: Request) {
   const origin = request.headers.get('origin');
   // Browser writes must be same origin. Non-browser tools need a session token.
-  return !origin || origin === new URL(request.url).origin;
+  if (origin === null) return true;
+  try {
+    const url = new URL(request.url);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    const host = request.headers.get('host');
+    // Next constructs request.url using the server's bind address. The browser
+    // uses the HTTP Host, which can be localhost even when we bind 127.0.0.1.
+    if (host === null) return origin === url.origin;
+    if (!host || /[\s,\/@\\?#]/.test(host)) return false;
+    return origin === new URL(`${url.protocol}//${host}`).origin;
+  } catch { return false; }
 }
 export async function readJSON(request: Request, limit = 300000): Promise<Record<string, unknown>> {
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) throw new RequestError('Send a JSON request.', 415);
