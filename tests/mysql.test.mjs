@@ -11,6 +11,7 @@ import { migrate } from '../scripts/migrate.mjs';
 import { checkDatabase } from '../scripts/check-db.mjs';
 import { createAdmin } from '../scripts/admin.mjs';
 import { hashToken } from '../lib/password.mjs';
+import { openFace, FACE_MODEL } from '../lib/face-policy.mjs';
 import { dateMY, addDays, localInstant } from '../lib/attendance.ts';
 
 loadLocalEnvironment();
@@ -20,6 +21,9 @@ test('MySQL migrations, controller transactions and local authentication', async
   const runtime = resolve('.test-runtime'); await mkdir(runtime, { recursive: true });
   const routePath = resolve(runtime, 'workspace.mjs'), loginPath = resolve(runtime, 'login.mjs'), authPath = resolve(runtime, 'auth.mjs');
   const kioskPath = resolve(runtime, 'kiosk.mjs'), kioskAdminPath = resolve(runtime, 'kiosk-admin.mjs');
+  const facePath = resolve(runtime, 'face.mjs'), enrollmentPath = resolve(runtime, 'face-enrollment.mjs');
+  const previousFaceKey = process.env.FACE_ENCRYPTION_KEY;
+  process.env.FACE_ENCRYPTION_KEY = '1'.repeat(64);
   const authMock = { name: 'mock-account', setup(builder) {
     builder.onResolve({ filter: /^@\/lib\/auth$/ }, () => ({ path: 'mock-auth', namespace: 'auth-test' }));
     builder.onLoad({ filter: /.*/, namespace: 'auth-test' }, () => ({ contents: 'export async function getCurrentUser(){return globalThis.__authUser ?? null;} export async function createSession(id){globalThis.__createdSession=id;}', loader: 'js' }));
@@ -28,14 +32,22 @@ test('MySQL migrations, controller transactions and local authentication', async
     builder.onResolve({ filter: /^next\/headers$/ }, () => ({ path: 'mock-cookies', namespace: 'cookies-test' }));
     builder.onLoad({ filter: /.*/, namespace: 'cookies-test' }, () => ({ contents: 'export async function cookies(){return globalThis.__cookieStore;}', loader: 'js' }));
   } };
+  // Controller tests inject model results; test:face-engine independently exercises the actual JPEG/CPU model.
+  const faceMock = { name: 'mock-face-engine', setup(builder) {
+    builder.onResolve({ filter: /^@\/lib\/face-engine\.mjs$/ }, () => ({ path: 'mock-face-engine', namespace: 'face-test' }));
+    builder.onLoad({ filter: /.*/, namespace: 'face-test' }, () => ({ contents: 'export class FaceInputError extends Error {} export async function faceAvailable(){return globalThis.__faceReady !== false;} export async function scanFrames(images){const result=await globalThis.__faceScan(images); if(typeof result === "string") throw new FaceInputError(result); return result;}', loader: 'js' }));
+  } };
   const shared = { bundle: true, platform: 'node', format: 'esm', packages: 'external', tsconfig: 'tsconfig.json' };
   await build({ ...shared, entryPoints: ['app/api/workspace/route.ts'], outfile: routePath, plugins: [authMock] });
   await build({ ...shared, entryPoints: ['app/api/auth/login/route.ts'], outfile: loginPath, plugins: [authMock] });
   await build({ ...shared, entryPoints: ['lib/auth.ts'], outfile: authPath, plugins: [cookiesMock] });
-  await build({ ...shared, entryPoints: ['app/api/kiosk/route.ts'], outfile: kioskPath, plugins: [cookiesMock] });
+  await build({ ...shared, entryPoints: ['app/api/kiosk/route.ts'], outfile: kioskPath, plugins: [cookiesMock, faceMock] });
   await build({ ...shared, entryPoints: ['app/api/kiosk/admin/route.ts'], outfile: kioskAdminPath, plugins: [cookiesMock, authMock] });
+  await build({ ...shared, entryPoints: ['app/api/kiosk/face/route.ts'], outfile: facePath, plugins: [cookiesMock, faceMock] });
+  await build({ ...shared, entryPoints: ['app/api/kiosk/face-enrollment/route.ts'], outfile: enrollmentPath, plugins: [authMock, faceMock] });
   const route = await import(pathToFileURL(routePath)), login = await import(pathToFileURL(loginPath)), auth = await import(pathToFileURL(authPath));
   const kiosk = await import(pathToFileURL(kioskPath)), kioskAdmin = await import(pathToFileURL(kioskAdminPath));
+  const face = await import(pathToFileURL(facePath)), enrollment = await import(pathToFileURL(enrollmentPath));
   const connection = await mysql.createConnection(databaseOptions());
   const post = async (body, headers = {}) => {
     const response = await route.POST(new Request('http://127.0.0.1:3000/api/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }));
@@ -62,7 +74,7 @@ test('MySQL migrations, controller transactions and local authentication', async
       await connection.execute('INSERT INTO hadir_schema_migrations VALUES (?, ?, ?)', ['001-initial', createHash('sha256').update(initial).digest('hex'), new Date().toISOString()]);
       await createAdmin(connection, { username: 'legacy', name: 'Legacy Admin', password });
       assert.equal(await migrate(connection), true); assert.equal(await migrate(connection), false);
-      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 12);
+      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 14);
       const [[legacy]] = await connection.execute('SELECT name FROM hadir_users WHERE username = ?', ['legacy']); assert.equal(legacy.name, 'Legacy Admin');
     });
     await t.test('administrator credentials are hashed and existing users are protected', async () => {
@@ -211,7 +223,7 @@ test('MySQL migrations, controller transactions and local authentication', async
     });
     await t.test('the paired kiosk only receives its workspace roster with no secrets or attendance', async () => {
       const result = await kioskCall(); assert.equal(result.status, 200); assert.equal(result.data.employees.length, 1);
-      assert.deepEqual(Object.keys(result.data.employees[0]).sort(), ['code', 'id', 'name']);
+      assert.deepEqual(Object.keys(result.data.employees[0]).sort(), ['code', 'hasFace', 'hasPin', 'id', 'name']);
       assert.equal(result.data.punches, undefined); assert.equal(result.data.employees[0].id, employee.id);
     });
     await t.test('incorrect PINs are persisted, limited, and unlocked by administrator reset', async () => {
@@ -255,5 +267,112 @@ test('MySQL migrations, controller transactions and local authentication', async
       await connection.execute('UPDATE hadir_kiosk_sessions SET expires_at = ? WHERE owner_id = ?', ['2000-01-01T00:00:00.000Z', owner]);
       assert.equal((await kioskCall()).status, 401);
     });
-  } finally { await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb; }
+    const frames = value => [0, 0.12, 0.01].map(pose => ({ descriptor: Array(128).fill(value), pose }));
+    const good = frames(0.1), images = ['controller-frame-1', 'controller-frame-2', 'controller-frame-3'];
+    globalThis.__faceScan = () => structuredClone(good);
+    const faceCall = async (body, headers = {}) => {
+      const response = await face.POST(new Request('http://127.0.0.1:3000/api/kiosk/face', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }));
+      return { status: response.status, data: await response.json() };
+    };
+    const enroll = async (body, headers = {}) => {
+      const response = body === undefined ? await enrollment.GET() : await enrollment.POST(new Request('http://127.0.0.1:3000/api/kiosk/face-enrollment', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }));
+      return { status: response.status, data: await response.json() };
+    };
+    let faceEmployee;
+    await t.test('face enrollment requires an administrator, consent, account ownership and same origin', async () => {
+      globalThis.__authUser = { userId: owner };
+      assert.equal((await post({ action: 'employee', code: 'EMP-FACE', name: 'Face Test Employee', department: 'Support', scheduleId: schedule.id, active: true, startDate: addDays(day, -30) })).status, 200);
+      faceEmployee = (await get()).data.employees.find(e => e.code === 'EMP-FACE');
+      const body = { action: 'enroll', employeeId: faceEmployee.id, consent: true, images };
+      globalThis.__authUser = null;
+      assert.equal((await enroll()).status, 401); assert.equal((await enroll(body)).status, 401);
+      assert.equal((await faceCall({ action: 'challenge', employeeId: faceEmployee.id })).status, 401);
+      globalThis.__authUser = { userId: second };
+      assert.equal((await enroll(body)).status, 404);
+      globalThis.__authUser = { userId: owner };
+      assert.equal((await enroll({ ...body, consent: false })).status, 400);
+      assert.equal((await enroll(body, { origin: 'https://evil.example' })).status, 403);
+      assert.equal((await enroll({ ...body, padding: 'x'.repeat(700001) })).status, 413);
+      globalThis.__faceReady = false; assert.equal((await enroll(body)).status, 503); globalThis.__faceReady = true;
+    });
+    await t.test('enrollment encrypts three templates and rejects mixed or duplicate identities', async () => {
+      globalThis.__faceScan = () => [good[0], frames(-0.1)[1], good[2]];
+      assert.equal((await enroll({ action: 'enroll', employeeId: faceEmployee.id, consent: true, images })).status, 400);
+      globalThis.__faceScan = () => structuredClone(good);
+      assert.equal((await enroll({ action: 'enroll', employeeId: faceEmployee.id, consent: true, images })).status, 200);
+      const [[row]] = await connection.execute('SELECT template, model FROM hadir_employee_faces WHERE employee_id = ?', [faceEmployee.id]);
+      assert.ok(row.template.startsWith('v1.')); assert.equal(row.model, FACE_MODEL);
+      assert.deepEqual(openFace(row.template, owner, faceEmployee.id), good.map(f => f.descriptor));
+      assert.equal((await enroll({ action: 'enroll', employeeId: employee.id, consent: true, images })).status, 409);
+      const saved = (await get()).data.employees.find(e => e.id === faceEmployee.id);
+      assert.equal(saved.faceEnrolled, true); assert.equal(saved.template, undefined); assert.equal(saved.descriptor, undefined);
+    });
+    await t.test('a face-only employee can start a kiosk without leaking templates', async () => {
+      assert.equal((await post({ action: 'remove-employee-pin', employeeId: employee.id })).status, 200);
+      await auth.createSession(owner); assert.equal((await station('start')).status, 200);
+      const result = await kioskCall(); assert.equal(result.status, 200); assert.equal(result.data.faceReady, true);
+      assert.equal(result.data.employees.length, 1); assert.equal(result.data.employees[0].hasFace, true); assert.equal(result.data.employees[0].hasPin, false);
+      assert.deepEqual(Object.keys(result.data.employees[0]).sort(), ['code', 'hasFace', 'hasPin', 'id', 'name']);
+      assert.equal((await post({ action: 'employee-pin', employeeId: employee.id, pin })).status, 200);
+    });
+    const challenge = async (id = faceEmployee.id) => {
+      const result = await faceCall({ action: 'challenge', employeeId: id }); assert.equal(result.status, 200, JSON.stringify(result)); return result.data.challenge;
+    };
+    const scan = async (token, id = faceEmployee.id) => faceCall({ action: 'scan', employeeId: id, challenge: token, images });
+    await t.test('static images, wrong faces and ambiguous images cannot create attendance', async () => {
+      const count = (await connection.query('SELECT COUNT(*) AS n FROM hadir_punches'))[0][0].n;
+      assert.equal((await faceCall({ action: 'challenge', employeeId: faceEmployee.id }, { origin: 'https://evil.example' })).status, 403);
+      globalThis.__faceReady = false; assert.equal((await faceCall({ action: 'challenge', employeeId: faceEmployee.id })).status, 503); globalThis.__faceReady = true;
+      globalThis.__faceScan = () => good.map(f => ({ ...f, pose: 0 })); assert.equal((await scan(await challenge())).status, 400);
+      globalThis.__faceScan = () => frames(-0.1); assert.equal((await scan(await challenge())).status, 400);
+      globalThis.__faceScan = () => 'Only one person should be in the camera frame.'; assert.equal((await scan(await challenge())).status, 400);
+      globalThis.__faceScan = () => structuredClone(good);
+      assert.equal((await connection.query('SELECT COUNT(*) AS n FROM hadir_punches'))[0][0].n, count);
+    });
+    await t.test('challenges expire, remain bound to their employee, and are never stored in plain text', async () => {
+      const expired = await challenge();
+      const [[row]] = await connection.execute('SELECT token_hash FROM hadir_face_challenges WHERE token_hash = ?', [hashToken(expired)]);
+      assert.equal(row.token_hash, hashToken(expired)); assert.notEqual(row.token_hash, expired);
+      await connection.execute('UPDATE hadir_face_challenges SET expires_at = ? WHERE token_hash = ?', ['2000-01-01T00:00:00.000Z', hashToken(expired)]);
+      assert.equal((await scan(expired)).status, 409);
+      const bound = await challenge(); assert.equal((await scan(bound, employee.id)).status, 409);
+      const newer = await challenge(); assert.equal((await scan(bound)).status, 409);
+      assert.equal((await post({ action: 'employee-pin', employeeId: faceEmployee.id, pin })).status, 200);
+      const start = Date.now();
+      const results = await Promise.all([scan(newer), kioskCall({ employeeId: faceEmployee.id, pin })]);
+      assert.ok(results.every(r => r.status === 200), JSON.stringify(results)); assert.equal(results.filter(r => !r.data.already).length, 1);
+      const [rows] = await connection.execute('SELECT timestamp, kind, source FROM hadir_punches WHERE employee_id = ?', [faceEmployee.id]);
+      assert.equal(rows.length, 1); assert.equal(rows[0].kind, 'IN'); assert.ok(['face', 'kiosk'].includes(rows[0].source)); assert.ok(Date.parse(rows[0].timestamp) >= start);
+      assert.equal((await scan(newer)).status, 409);
+    });
+    await t.test('face failure limits persist, PIN remains available, and re-enrollment clears the lock', async () => {
+      // Fresh station resets only station throughput; per-employee failures remain in MySQL.
+      assert.equal((await station('start')).status, 200);
+      globalThis.__faceScan = () => frames(-0.1);
+      for (let i = 0; i < 5; i++) assert.equal((await scan(await challenge())).status, 400);
+      assert.equal((await faceCall({ action: 'challenge', employeeId: faceEmployee.id })).status, 429);
+      assert.equal((await kioskCall({ employeeId: faceEmployee.id, pin })).status, 200);
+      globalThis.__faceScan = () => structuredClone(good);
+      assert.equal((await enroll({ action: 'enroll', employeeId: faceEmployee.id, consent: true, images })).status, 200);
+      const token = await challenge();
+      assert.equal((await enroll({ action: 'remove', employeeId: faceEmployee.id })).status, 200);
+      assert.equal((await scan(token)).status, 409); assert.equal((await faceCall({ action: 'challenge', employeeId: faceEmployee.id })).status, 400);
+      const saved = (await get()).data.employees.find(e => e.id === faceEmployee.id); assert.equal(saved.faceEnrolled, false); assert.equal(saved.kioskPinSet, true);
+    });
+    await t.test('face attendance stores its source and rechecks kiosk revocation after image processing', async () => {
+      globalThis.__faceScan = () => frames(-0.1);
+      assert.equal((await enroll({ action: 'enroll', employeeId: employee.id, consent: true, images })).status, 200);
+      await connection.execute('DELETE FROM hadir_punches WHERE employee_id = ? AND timestamp >= ?', [employee.id, localInstant(addDays(dateMY(), -1), '00:00')]);
+      const result = await scan(await challenge(employee.id), employee.id); assert.equal(result.status, 200); assert.equal(result.data.already, false);
+      const [[row]] = await connection.execute("SELECT source FROM hadir_punches WHERE employee_id = ? AND source = 'face'", [employee.id]); assert.equal(row.source, 'face');
+      const pending = await challenge(employee.id);
+      globalThis.__faceScan = async () => { assert.equal((await station('revoke')).status, 200); return frames(-0.1); };
+      assert.equal((await scan(pending, employee.id)).status, 401);
+      assert.equal((await faceCall({ action: 'challenge', employeeId: employee.id })).status, 401);
+    });
+  } finally {
+    await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb;
+    delete globalThis.__faceScan; delete globalThis.__faceReady;
+    if (previousFaceKey === undefined) delete process.env.FACE_ENCRYPTION_KEY; else process.env.FACE_ENCRYPTION_KEY = previousFaceKey;
+  }
 });

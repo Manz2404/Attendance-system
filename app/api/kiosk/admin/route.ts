@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { cookies } from 'next/headers';
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, lt, or, isNotNull } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { workspaces, employees, employeePins, sessions, kioskSessions } from '@/db/schema';
+import { workspaces, employees, employeePins, employeeFaces, sessions, kioskSessions } from '@/db/schema';
 import { getCurrentUser } from '@/lib/auth';
 import { hashToken } from '@/lib/password.mjs';
 import { kioskCookie } from '@/lib/kiosk-session';
@@ -27,8 +27,8 @@ export async function POST(request: Request) {
         await db.delete(kioskSessions).where(eq(kioskSessions.ownerId, user.userId));
         return 'revoked';
       }
-      const [ready] = await db.select({ id: employees.id }).from(employees).innerJoin(employeePins, eq(employeePins.employeeId, employees.id))
-        .where(and(eq(employees.ownerId, user.userId), eq(employeePins.ownerId, user.userId), eq(employees.active, true))).limit(1);
+      const [ready] = await db.select({ id: employees.id }).from(employees).leftJoin(employeePins, and(eq(employeePins.employeeId, employees.id), eq(employeePins.ownerId, user.userId))).leftJoin(employeeFaces, and(eq(employeeFaces.employeeId, employees.id), eq(employeeFaces.ownerId, user.userId)))
+        .where(and(eq(employees.ownerId, user.userId), eq(employees.active, true), or(isNotNull(employeePins.employeeId), isNotNull(employeeFaces.employeeId)))).limit(1);
       if (!ready) return 'no-pins';
       await db.delete(kioskSessions).where(lt(kioskSessions.expiresAt, createdAt));
       const old = jar.get(kioskCookie)?.value;
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       return 'started';
     });
     if (outcome === 'missing') return json({ error: 'Initialize your workspace first.' }, 400);
-    if (outcome === 'no-pins') return json({ error: 'Set a PIN for at least one active employee first.' }, 400);
+    if (outcome === 'no-pins') return json({ error: 'Set a PIN or enroll a face for at least one active employee first.' }, 400);
     if (outcome === 'revoked') return json({ message: 'All kiosk browsers have been disconnected.' });
     jar.set(kioskCookie, token, { httpOnly: true, sameSite: 'strict', secure: process.env.COOKIE_SECURE === 'true', path: '/', expires });
     jar.delete('hadir_session');

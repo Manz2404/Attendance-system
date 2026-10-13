@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, CheckCircle2, Clock3, Delete, LoaderCircle, LockKeyhole, RefreshCw } from 'lucide-react';
+import CameraCapture from '../camera-capture';
 import ThemeToggle from '../theme-toggle';
 import { dateMY, dateLabel, timeMY } from '@/lib/attendance';
 
-type Roster = { name: string; now: string; employees: { id: string; name: string; code: string }[] };
+type Roster = { name: string; now: string; faceReady: boolean; employees: { id: string; name: string; code: string; hasPin: boolean; hasFace: boolean }[] };
 type Success = { name: string; timestamp: string; already: boolean; message: string };
 export default function KioskScreen() {
   const [roster, setRoster] = useState<Roster | null>(null), [locked, setLocked] = useState(false), [loading, setLoading] = useState(true);
   const [employeeId, setEmployeeId] = useState(''), [pin, setPin] = useState(''), [error, setError] = useState('');
+  const [method, setMethod] = useState<'pin' | 'face'>('pin');
   const [busy, setBusy] = useState(false), [success, setSuccess] = useState<Success | null>(null), [now, setNow] = useState<string | null>(null);
   const clock = useRef({ server: 0, client: 0 }), sending = useRef(false), select = useRef<HTMLSelectElement>(null), pinInput = useRef<HTMLInputElement>(null);
   const load = useCallback(async () => {
@@ -32,7 +34,7 @@ export default function KioskScreen() {
   useEffect(() => { if (!success) return; const timer = setTimeout(reset, 5000); return () => clearTimeout(timer); }, [success]);
   useEffect(() => { if (!pin || busy) return; const timer = setTimeout(() => { setPin(''); setEmployeeId(''); }, 30000); return () => clearTimeout(timer); }, [pin, busy]);
   async function submit(e: FormEvent) {
-    e.preventDefault(); if (sending.current || !employeeId || pin.length !== 6) return;
+    e.preventDefault(); if (sending.current || !employeeId || pin.length !== 6 || !roster?.employees.find(e => e.id === employeeId)?.hasPin) return;
     sending.current = true; setBusy(true); setError('');
     const credentials = { employeeId, pin }; setPin('');
     try {
@@ -43,19 +45,34 @@ export default function KioskScreen() {
     } catch (e) { setError(e instanceof Error && e.name !== 'TimeoutError' ? e.message : 'Connection timed out. Try again; another clock-in will not be added.'); pinInput.current?.focus(); }
     finally { sending.current = false; setBusy(false); }
   }
+  const selected = roster?.employees.find(e => e.id === employeeId);
+  async function faceCall(body: Record<string, unknown>) {
+    const response = await fetch('/api/kiosk/face', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+    const data = await response.json();
+    if (!response.ok) { if (data.code === 'KIOSK_DISCONNECTED') setLocked(true); throw new Error(data.error || 'Face scan failed. Please try again or use your PIN.'); }
+    return data;
+  }
+  async function faceScan(images: string[], challenge?: string) {
+    if (sending.current) throw new Error('A clock-in is already being saved.');
+    sending.current = true; setBusy(true); setError('');
+    try { const data = await faceCall({ action: 'scan', employeeId, challenge, images }); setSuccess(data); setEmployeeId(''); }
+    finally { sending.current = false; setBusy(false); }
+  }
   return <main className="kiosk-screen">
     <header className="kiosk-header"><div className="auth-brand">hadir<span>.</span></div><div><span className="kiosk-workspace">{roster?.name ?? 'Attendance kiosk'}</span><ThemeToggle /></div></header>
     <section className="kiosk-card">
       <div className="kiosk-clock"><span><Clock3 size={16} />Malaysia time · GMT+8</span><strong>{now ? timeMY(now) : '—'}</strong><p>{now ? dateLabel(dateMY(now), true) : 'Connecting to your workspace…'}</p></div>
       {loading ? <div className="kiosk-state"><LoaderCircle className="spin" size={32} /><p>Loading kiosk…</p></div> : locked ? <div className="kiosk-state"><LockKeyhole size={35} /><h1>Kiosk setup required</h1><p>{error}</p><a className="button primary" href="/login">Administrator sign-in<ArrowRight size={17} /></a></div> : success ? <div className="kiosk-state kiosk-success" role="status" aria-live="polite"><CheckCircle2 size={52} /><h1>{success.already ? 'Already clocked in' : 'You’re clocked in.'}</h1><strong>{success.name}</strong><p>{timeMY(success.timestamp)} MYT · {dateLabel(dateMY(success.timestamp), true)}</p><span>Ready for the next person in 5 seconds.</span><button className="button secondary" onClick={reset}>Next person<ArrowRight size={17} /></button></div> : <>
-      <div className="kiosk-heading"><div className="eyebrow">START YOUR WORKDAY</div><h1>Clock in</h1><p>Choose your name and enter your six-digit PIN.</p></div>
-      {!roster ? <div className="kiosk-state"><p role="alert">{error}</p><button className="button secondary" onClick={load}><RefreshCw size={17} />Retry connection</button></div> : !roster.employees.length ? <div className="kiosk-state"><p>No employees are ready to clock in. Ask the administrator to check active staff, start dates and PINs.</p></div> : <form className="kiosk-form" onSubmit={submit}>
-        <label>Your name<select ref={select} value={employeeId} required disabled={busy} onChange={e => { setEmployeeId(e.target.value); setPin(''); setError(''); pinInput.current?.focus(); }}><option value="">Choose your name…</option>{roster.employees.map(e => <option key={e.id} value={e.id}>{e.name} · {e.code}</option>)}</select></label>
+      <div className="kiosk-heading"><div className="eyebrow">START YOUR WORKDAY</div><h1>Clock in</h1><p>Choose your name, then scan your face or enter your PIN.</p></div>
+      {!roster ? <div className="kiosk-state"><p role="alert">{error}</p><button className="button secondary" onClick={load}><RefreshCw size={17} />Retry connection</button></div> : !roster.employees.length ? <div className="kiosk-state"><p>No employees are ready to clock in. Ask the administrator to check active staff, start dates, PINs and face enrollment.</p></div> : <form className="kiosk-form" onSubmit={submit}>
+        <label>Your name<select ref={select} value={employeeId} required disabled={busy} onChange={e => { setEmployeeId(e.target.value); setPin(''); setError(''); setMethod(roster.employees.find(person => person.id === e.target.value)?.hasPin ? 'pin' : 'face'); pinInput.current?.focus(); }}><option value="">Choose your name…</option>{roster.employees.map(e => <option key={e.id} value={e.id}>{e.name} · {e.code}</option>)}</select></label>
+        {selected && <div className="kiosk-methods"><button type="button" aria-pressed={method === 'pin'} disabled={!selected.hasPin || busy} onClick={() => { setMethod('pin'); setPin(''); setError(''); }}>PIN</button><button type="button" aria-pressed={method === 'face'} disabled={!selected.hasFace || !roster.faceReady || busy} onClick={() => { setMethod('face'); setPin(''); setError(''); }}>Face scan</button></div>}
+        {method === 'face' && selected ? <><p className="kiosk-hint">Follow the head-turn instructions. This scan verifies the selected employee.</p>{selected.hasFace && roster.faceReady ? <CameraCapture key={employeeId} mode="scan" beforeCapture={async () => { const data = await faceCall({ action: 'challenge', employeeId }); return data.challenge; }} onCapture={faceScan} /> : <p role="alert" className="auth-error">Face scanning is not ready for this employee. Ask the administrator or use a PIN.</p>}</> : <>
         <label>Your PIN<input ref={pinInput} type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} required value={pin} disabled={busy || !employeeId} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} placeholder="Six-digit PIN" aria-describedby="kiosk-pin-help" /></label>
         <div className="kiosk-keypad" aria-label="PIN keypad">{['1','2','3','4','5','6','7','8','9','clear','0','delete'].map(key => <button type="button" key={key} disabled={busy || !employeeId} aria-label={key === 'delete' ? 'Delete last digit' : key === 'clear' ? 'Clear PIN' : key} onClick={() => setPin(p => key === 'clear' ? '' : key === 'delete' ? p.slice(0, -1) : (p + key).slice(0, 6))}>{key === 'delete' ? <Delete size={23} /> : key === 'clear' ? 'Clear' : key}</button>)}</div>
         <p id="kiosk-pin-help" className="kiosk-hint">Forgot your PIN? Ask your administrator to reset it.</p>
         {error && <div className="auth-error" role="alert">{error}</div>}
-        <button className="button primary kiosk-submit" disabled={busy || !employeeId || pin.length !== 6}>{busy ? <LoaderCircle size={20} className="spin" /> : <ArrowRight size={20} />}{busy ? 'Saving clock-in…' : 'Clock in'}</button>
+        <button className="button primary kiosk-submit" disabled={busy || !employeeId || !selected?.hasPin || pin.length !== 6}>{busy ? <LoaderCircle size={20} className="spin" /> : <ArrowRight size={20} />}{busy ? 'Saving clock-in…' : 'Clock in'}</button></>}
       </form>}</>}
     </section><footer className="kiosk-footer"><span>Attendance, made clear.</span><a href="/login">Administrator sign-in</a></footer>
   </main>;

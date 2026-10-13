@@ -1,6 +1,6 @@
 {
   "name": "hadir-attendance",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -16,9 +16,10 @@
     "admin:create": "node scripts/admin.mjs",
     "admin:reset-password": "node scripts/admin.mjs --reset",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/attendance.test.mjs tests/security.test.mjs tests/database-version.test.mjs tests/kiosk.test.mjs",
+    "test": "node --experimental-strip-types --test tests/attendance.test.mjs tests/security.test.mjs tests/database-version.test.mjs tests/kiosk.test.mjs tests/face.test.mjs",
     "test:mysql": "node --experimental-strip-types --test tests/mysql.test.mjs",
-    "test:http": "node --test tests/http.test.mjs"
+    "test:http": "node --test tests/http.test.mjs",
+    "test:face-engine": "node --test tests/face-engine.test.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
@@ -26,7 +27,11 @@
     "mysql2": "3.24.5",
     "next": "16.3.4",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "@vladmandic/face-api": "1.7.15",
+    "@tensorflow/tfjs": "4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "4.22.0",
+    "jpeg-js": "0.4.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.1",

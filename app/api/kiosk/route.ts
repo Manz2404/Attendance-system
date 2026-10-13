@@ -1,11 +1,12 @@
-import { and, eq, asc, gt, gte, lt } from 'drizzle-orm';
+import { and, eq, asc, gt, or, isNotNull } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { employees, employeePins, workspaces, punches, schedules, kioskAttempts, kioskSessions } from '@/db/schema';
+import { employees, employeePins, employeeFaces, workspaces, schedules, kioskAttempts, kioskSessions } from '@/db/schema';
 import { getKioskSession } from '@/lib/kiosk-session';
 import { hashToken, validPin, verifyPin } from '@/lib/password.mjs';
 import { allowedOrigin, readJSON, RequestError } from '@/lib/request';
-import { dateMY, addDays, localInstant } from '@/lib/attendance';
-import { kioskWorkday, existingClockIn, attemptWindow } from '@/lib/kiosk-policy';
+import { faceAvailable } from '@/lib/face-engine.mjs';
+import { saveKioskClockIn } from '@/lib/kiosk-punch';
+import { kioskWorkday, attemptWindow } from '@/lib/kiosk-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,14 +19,14 @@ export async function GET() {
     const db = getDb(), now = new Date().toISOString();
     const [ws, staff, shifts] = await Promise.all([
       db.select({ name: workspaces.name }).from(workspaces).where(eq(workspaces.ownerId, session.ownerId)).limit(1),
-      db.select({ id: employees.id, name: employees.name, code: employees.code, scheduleId: employees.scheduleId, active: employees.active, startDate: employees.startDate, endDate: employees.endDate })
-        .from(employees).innerJoin(employeePins, eq(employeePins.employeeId, employees.id))
-        .where(and(eq(employees.ownerId, session.ownerId), eq(employeePins.ownerId, session.ownerId), eq(employees.active, true))).orderBy(asc(employees.name)),
+      db.select({ id: employees.id, name: employees.name, code: employees.code, scheduleId: employees.scheduleId, active: employees.active, startDate: employees.startDate, endDate: employees.endDate, pin: employeePins.employeeId, face: employeeFaces.employeeId })
+        .from(employees).leftJoin(employeePins, and(eq(employeePins.employeeId, employees.id), eq(employeePins.ownerId, session.ownerId))).leftJoin(employeeFaces, and(eq(employeeFaces.employeeId, employees.id), eq(employeeFaces.ownerId, session.ownerId)))
+        .where(and(eq(employees.ownerId, session.ownerId), eq(employees.active, true), or(isNotNull(employeePins.employeeId), isNotNull(employeeFaces.employeeId)))).orderBy(asc(employees.name)),
       db.select().from(schedules).where(eq(schedules.ownerId, session.ownerId)),
     ]);
-    // The shared station receives names and codes only, never PIN hashes or full attendance.
-    return json({ name: ws[0]?.name ?? 'Attendance', now, employees: staff.filter(e => kioskWorkday(e, now, shifts.find(s => s.id === e.scheduleId)))
-      .map(({ id, name, code }) => ({ id, name, code })) });
+    // Only names, codes and available methods reach the kiosk, never templates, hashes or attendance history.
+    return json({ name: ws[0]?.name ?? 'Attendance', now, faceReady: await faceAvailable(), employees: staff.filter(e => kioskWorkday(e, now, shifts.find(s => s.id === e.scheduleId)))
+      .map(({ id, name, code, pin, face }) => ({ id, name, code, hasPin: !!pin, hasFace: !!face })) });
   } catch (error) {
     console.error('Kiosk read failed', error instanceof Error ? error.name : 'server error');
     return json({ error: 'Could not load the kiosk. Check the database and run setup-windows.cmd.' }, 500);
@@ -73,15 +74,7 @@ export async function POST(request: Request) {
         return json({ error: 'The name or PIN is incorrect, or this employee is unavailable. Please try again or ask the administrator.' }, 401);
       }
       await db.update(kioskAttempts).set({ failures: 0, windowStart: now }).where(eq(kioskAttempts.key, userKey));
-      // Search both calendar dates of an overnight shift; also detect existing manual/CSV clock-ins.
-      const logs = await db.select({ timestamp: punches.timestamp, kind: punches.kind }).from(punches)
-        .where(and(eq(punches.ownerId, session.ownerId), eq(punches.employeeId, employee.id), gte(punches.timestamp, localInstant(day, '00:00')), lt(punches.timestamp, localInstant(addDays(day, 2), '00:00'))));
-      const existing = existingClockIn(logs, day, schedule);
-      if (existing) return json({ message: 'You have already clocked in for this workday.', already: true, name: employee.name, timestamp: existing.timestamp, workday: day });
-      // All timestamps and event types come from the server. A kiosk cannot backdate or clock out.
-      await db.insert(punches).values({ id: crypto.randomUUID(), ownerId: session.ownerId, employeeId: employee.id, timestamp: now, kind: 'IN', source: 'kiosk', deviceId: null,
-        note: 'PIN kiosk clock-in', dedupeKey: `${employee.id}|${now}|IN`, createdAt: now });
-      return json({ message: 'Clock-in saved.', already: false, name: employee.name, timestamp: now, workday: day });
+      return json(await saveKioskClockIn(db, session.ownerId, employee, day, schedule, now, 'kiosk'));
     });
   } catch (error) {
     if (error instanceof RequestError) return json({ error: error.message }, error.status);

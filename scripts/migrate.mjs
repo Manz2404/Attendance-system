@@ -8,6 +8,7 @@ const expectedTables = ['hadir_users', 'hadir_sessions', 'hadir_login_attempts',
 const migrations = [
   { version: '001-initial', tables: expectedTables },
   { version: '002-kiosk', tables: ['hadir_employee_pins', 'hadir_kiosk_sessions', 'hadir_kiosk_attempts'] },
+  { version: '003-face', tables: ['hadir_employee_faces', 'hadir_face_challenges'] },
 ];
 export async function migrate(connection) {
   await checkDatabase(connection);

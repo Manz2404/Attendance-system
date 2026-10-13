@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, int, boolean, mysqlEnum, index, uniqueIndex } from 'drizzle-orm/mysql-core';
+import { mysqlTable, varchar, text, int, boolean, mysqlEnum, index, uniqueIndex } from 'drizzle-orm/mysql-core';
 
 const id = () => varchar('id', { length: 36 }).primaryKey();
 const instant = (name: string) => varchar(name, { length: 24 });
@@ -55,7 +55,7 @@ export const punches = mysqlTable('hadir_punches', {
   id: id(), ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
   employeeId: varchar('employee_id', { length: 36 }).notNull().references(() => employees.id),
   timestamp: instant('timestamp').notNull(), kind: mysqlEnum('kind', ['IN', 'OUT']).notNull(),
-  source: mysqlEnum('source', ['manual', 'csv', 'sample', 'kiosk']).notNull(),
+  source: mysqlEnum('source', ['manual', 'csv', 'sample', 'kiosk', 'face']).notNull(),
   deviceId: varchar('device_id', { length: 36 }).references(() => devices.id),
   note: varchar('note', { length: 240 }).notNull().default(''), dedupeKey: varchar('dedupe_key', { length: 150 }).notNull(),
   createdAt: instant('created_at').notNull(),
@@ -77,3 +77,17 @@ export const kioskAttempts = mysqlTable('hadir_kiosk_attempts', {
   key: varchar('attempt_key', { length: 64 }).primaryKey(),
   failures: int('failures').notNull(), windowStart: instant('window_start').notNull(),
 });
+
+export const employeeFaces = mysqlTable('hadir_employee_faces', {
+  employeeId: varchar('employee_id', { length: 36 }).primaryKey().references(() => employees.id, { onDelete: 'cascade' }),
+  ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
+  template: text('template').notNull(), model: varchar('model', { length: 60 }).notNull(), updatedAt: instant('updated_at').notNull(),
+}, t => [index('hadir_employee_faces_owner_idx').on(t.ownerId)]);
+
+export const faceChallenges = mysqlTable('hadir_face_challenges', {
+  tokenHash: varchar('token_hash', { length: 64 }).primaryKey(),
+  kioskTokenHash: varchar('kiosk_token_hash', { length: 64 }).notNull().references(() => kioskSessions.tokenHash, { onDelete: 'cascade' }),
+  ownerId: varchar('owner_id', { length: 36 }).notNull(),
+  employeeId: varchar('employee_id', { length: 36 }).notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  expiresAt: instant('expires_at').notNull(),
+}, t => [index('hadir_face_challenges_kiosk_idx').on(t.kioskTokenHash), index('hadir_face_challenges_expiry_idx').on(t.expiresAt)]);

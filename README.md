@@ -2,7 +2,7 @@
 
 A standalone attendance application for your Windows laptop. Source code belongs in `C:\Attendance-system`; attendance records are saved on the MySQL server you configure. SQLyog is the client you use to manage that server.
 
-This version includes employees, schedules, manual IN/OUT punches, CSV imports, daily attendance, monthly reports, CSV exports, and a PIN clock-in kiosk. Device registration stores hardware details; a real device adapter will be added after you choose a device with a supported SDK/API. No hardware connection is claimed in this version.
+This version includes employees, schedules, manual IN/OUT punches, CSV imports, daily attendance, monthly reports, CSV exports, and a clock-in kiosk with PIN or webcam face verification. It supports a laptop camera or USB webcam. Device registration stores plans for separate attendance hardware; a device adapter still needs a supported SDK/API.
 
 ## Install on Windows
 
@@ -42,7 +42,7 @@ This version includes employees, schedules, manual IN/OUT punches, CSV imports, 
 
    Replace the example username and password with your real values **on your laptop**. Quotes keep spaces and `#` in a password intact. If MySQL runs on another computer, enter that server's address as `DB_HOST`. The account needs `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `INDEX` and `REFERENCES` permissions for the selected database during initial setup. It needs read/write permissions afterwards.
 
-5. Setup downloads dependencies, checks the connection, creates the attendance tables, asks you to create an administrator username and password, then builds the app. The administrator password must have at least 12 characters; it is different from your MySQL password.
+5. Setup downloads dependencies and face-recognition models, checks the connection, generates a private `FACE_ENCRYPTION_KEY` in `.env`, creates or upgrades the attendance tables, asks you to create an administrator username and password, then builds the app. The administrator password must have at least 12 characters; it is different from your MySQL password. Existing administrators are retained on updates.
 6. Double-click **start-windows.cmd**. Keep its window open and visit **http://127.0.0.1:3000**. Sign in with the administrator account you just created. Closing the window stops the app; your MySQL records remain saved.
 
 The default server listens only on your laptop. Future device integration may need a separate LAN gateway or authenticated endpoint, depending on the device. It is not set up for access from other computers yet.
@@ -54,6 +54,7 @@ The default server listens only on your laptop. Future device integration may ne
 | Source code | `C:\Attendance-system` and your GitHub repository |
 | Your database connection settings | `C:\Attendance-system\.env` — ignored by Git |
 | Attendance records, accounts and sessions | `hadir_*` tables in the MySQL database set by `DB_NAME` |
+| Encrypted face templates | `hadir_employee_faces` in that database; encryption key in your private `.env` |
 | Browser address | `http://127.0.0.1:3000` |
 
 No database password, administrator password or live attendance records are included in the repository. Keep `.env` private. You do not need ChatGPT login to use this local version. The earlier hosted preview is a separate installation; its data is not copied automatically into MySQL.
@@ -76,20 +77,42 @@ Sample employees are optional and clearly labeled. Removing samples deletes thos
 
 ## Clock-in kiosk
 
-1. Stop the running server, keep your existing `.env`, and run `setup-windows.cmd` after updating. Setup applies the new `002-kiosk.sql` migration and builds the app. Back up your MySQL database before the update.
+1. Stop the running server, keep your existing `.env`, and run `setup-windows.cmd` after updating. Setup applies unapplied kiosk and face migrations and builds the app. Back up your MySQL database and `.env` before the update.
 2. Sign in as the administrator and open **Kiosk** in the side menu.
 3. Choose an employee, enter and confirm a **six-digit PIN**, and click **Save PIN**. Leading zeros are supported. Share each PIN privately with its employee; PINs cannot be retrieved afterwards, only replaced or removed.
 4. On the computer/browser that will be the shared attendance station, click **Start kiosk & sign out**. This revokes the current administrator session in that browser and opens **http://127.0.0.1:3000/kiosk** (or your configured port).
 5. Staff choose their name, enter their PIN on the keyboard or number pad, and click **Clock in**. The success screen clears after five seconds for the next person. The timestamp is supplied by the server and attendance is saved to the normal MySQL punch table with source **kiosk**.
 6. Sign in as administrator to see the record in Attendance or Reports. For another kiosk browser, sign in on that browser and repeat **Start kiosk & sign out**.
 
-The kiosk cookie expires after 30 days. It only grants access to the staff-name list and PIN clock-in endpoint for its workspace; it grants no access to administrator screens or reports. **Disconnect all kiosks** revokes every paired browser for the current workspace. Removing a PIN or making an employee inactive removes their kiosk access. Resetting a PIN also clears that employee's failed-attempt lock.
+The kiosk cookie expires after 30 days. It only grants access to its workspace's staff-name list and restricted clock-in endpoints; it grants no access to administrator screens or reports. **Disconnect all kiosks** revokes every paired browser for the current workspace. Removing a PIN disables PIN entry; removing a face disables face entry. Staff with neither method, or inactive staff, are unavailable at the kiosk. Resetting a PIN clears that employee's failed PIN attempts.
 
 This kiosk records **clock-in only**, once per shift workday. A second submission returns the existing IN record (including manual/CSV clock-ins) without inserting another. Overnight shifts use the schedule's workday. Clock-out remains available through the administrator's manual attendance workflow.
 
 Five incorrect PINs lock that employee for 15 minutes across kiosk browsers. Each station also has a per-minute request limit. PINs use individually salted scrypt hashes, session tokens are hashed in MySQL, and no PIN/hash is included in API responses or exports. Names and employee codes are only listed on a browser an administrator has paired.
 
-The laptop/application and MySQL must be running. `/kiosk` alone does not make the app available from other computers or your domain; network/tunnel setup is a separate step. A kiosk is a shared credential station and does not prove the person's physical identity.
+The laptop/application and MySQL must be running. `/kiosk` alone does not make the app available from other computers or your domain; network/tunnel setup is a separate step.
+
+## Laptop or USB webcam face attendance
+
+1. Update the application files, retain `.env`, and run **setup-windows.cmd**. It installs the local model files, generates an encryption key if needed, and applies **003-face.sql**. Start the app again.
+2. Sign in as administrator and open **Kiosk → Face enrollment**. Choose an employee and confirm that they agree to enrollment. Offer PIN entry to employees who prefer it or cannot be matched.
+3. Click **Enroll face → Start camera** and allow browser camera permission. If multiple cameras are connected, select the laptop or USB camera and click Start camera again. Use even lighting and keep one person in the guide.
+4. Click **Capture enrollment**. Follow the three prompts: look straight, turn slightly to one side, then look straight again. An administrator can replace or remove an enrollment on this screen. One face cannot be assigned to two employees in the same workspace.
+5. Click **Start kiosk & sign out**. Staff choose their name, select **Face scan**, start the camera, and click **Scan face & clock in**. They follow the head-turn prompts. A match saves a server-timestamped IN record with source **face**; repeated face or PIN entries return the existing workday's clock-in.
+
+Face scanning verifies the selected employee; it does not automatically identify everyone walking past the camera. Staff may use PIN entry if a PIN is set. A face-only employee can also use the kiosk. Clock-out remains the administrator's manual workflow.
+
+Camera permission works on **http://127.0.0.1:3000**, **http://localhost:3000**, or an **HTTPS** deployment. Plain HTTP on a LAN address normally cannot open a camera. Opening the kiosk on your domain still requires hosting or a tunnel; owning the domain alone does not run this application. Model processing uses the attendance server's CPU, so older laptops may scan more slowly.
+
+Three small camera JPEGs are sent to your own attendance server and processed in memory. Photos are not saved to disk or MySQL and are not sent to a face-recognition service. Only three 128-number face templates are retained, encrypted with AES-256-GCM and bound to the employee and workspace. Templates and PIN hashes never appear in browser rosters, reports or exports. Models are installed locally, so internet is needed for installation rather than each scan.
+
+**Keep `.env` with your secure database backup.** Losing or changing `FACE_ENCRYPTION_KEY` makes stored face enrollments unreadable; re-enroll employees in that case. Never commit the key or real employee photos to GitHub. Removing an enrollment deletes its template and outstanding scan tokens from the current database; manage old database backups according to your retention needs.
+
+Each scan uses a hashed, employee- and kiosk-bound token that expires after 90 seconds and can be used only once. Five failed face scans lock face entry for that employee for 15 minutes; PIN entry remains available. Re-enrollment clears the face lock. Each kiosk also limits scan starts per minute.
+
+**Use a supervised kiosk.** The head-turn check rejects a stationary pose; it is a basic movement check, not certified liveness detection. An ordinary webcam cannot reliably prevent photo/video spoofing. Matching can fail under poor lighting or vary by person; PIN fallback and administrator review remain available. Test enrollment, matching and duplicate clock-ins on your own camera before relying on the kiosk.
+
+Face detection, landmarks and descriptors use `@vladmandic/face-api` 1.7.15's Node/WASM distribution with `@tensorflow/tfjs` 4.22.0's pure JavaScript CPU backend. Its WASM backend dependency is installed but does not need a native TensorFlow addon. JPEG decoding uses `jpeg-js` 0.4.4. See `THIRD_PARTY_NOTICES.md` for the corresponding notices. The feature does not analyze age, gender or emotion.
 
 ## Commands and troubleshooting
 
@@ -106,6 +129,7 @@ Run commands from `C:\Attendance-system`:
 | `npm start` | Start the built app |
 | `npm test` | Attendance and security unit tests |
 | `npm run test:http` | Check browser origins against the built local server |
+| `npm run test:face-engine` | Load local face models and run the CPU detector on a test JPEG |
 | `npm run typecheck` | TypeScript check |
 
 - **Connection refused:** start your MySQL Windows service; check its host and port in SQLyog and `.env`.
@@ -117,6 +141,9 @@ Run commands from `C:\Attendance-system`:
 - **Login says "This request is not allowed":** open `http://127.0.0.1:3000/login` using your configured port. Version 0.2.2 also accepts `http://localhost:3000` correctly. Update the application files, keep `.env`, stop the running server, run `setup-windows.cmd` to rebuild, then start it again.
 - **Already contains `hadir_` tables:** use another database if these tables belong to a different app. Setup refuses an untracked installation; it does not replace those tables.
 - **Internet needed:** the first dependency install needs internet. The app can then run locally while the configured MySQL server is available.
+- **Camera permission denied:** allow camera access for the localhost/HTTPS address in your browser settings, close other apps using the camera, and retry. PIN entry remains available.
+- **Face scanning is not ready:** stop the server, run `setup-windows.cmd`, and restart. Setup installs models and validates the encryption key.
+- **Face did not match:** confirm the selected employee, improve lighting, move closer, and follow the head-turn prompts. An administrator can re-enroll the employee; use PIN entry if needed.
 
 For a remote MySQL connection requiring TLS, set `DB_SSL=true`; set `DB_SSL_CA` to your CA certificate path if required. TLS verification stays enabled. `COOKIE_SECURE=false` is for local HTTP; only change it to `true` when the browser uses HTTPS.
 
@@ -136,12 +163,12 @@ If installed using Git, save or commit your own code changes, then update:
 cd /d C:\Attendance-system
 git pull
 npm install
-npm run db:migrate
+npm run setup
 npm run build
 npm start
 ```
 
-The kiosk upgrade adds three tables and extends the punch source enum. Existing attendance and administrator accounts are retained. Migration files are checksummed and applied explicitly during setup/update, never during web requests. Do not edit an already applied migration. MySQL DDL commits automatically; an interrupted first setup can resume using its migration marker.
+The PIN upgrade adds three tables; the face upgrade adds two more and extends the punch source enum. Existing attendance and administrator accounts are retained. Setup generates the face key only when missing. Migration files are checksummed and applied explicitly during setup/update, never during web requests. Do not edit an already applied migration. MySQL DDL commits automatically; an interrupted first setup can resume using its migration marker.
 
 ## Source map
 
@@ -153,7 +180,11 @@ The kiosk upgrade adds three tables and extends the punch source enum. Existing 
 | `lib/auth.ts` | Hashed database sessions and logout |
 | `app/kiosk/`, `app/kiosk-settings.tsx` | Shared clock-in screen and administrator PIN setup |
 | `app/api/kiosk/` | Restricted clock-in and kiosk session endpoints |
+| `app/camera-capture.tsx`, `app/face-settings.tsx` | Camera capture and administrator face enrollment |
+| `lib/face-engine.mjs`, `lib/face-policy.mjs` | Server-side face extraction, matching, movement and template encryption |
+| `lib/kiosk-punch.ts` | Shared face/PIN duplicate-safe clock-in |
 | `database/002-kiosk.sql` | PINs, kiosk sessions and attempt limits |
+| `database/003-face.sql` | Encrypted templates and one-use scan challenges |
 | `lib/attendance.ts` | Attendance calculations and CSV handling |
 | `db/index.ts`, `db/schema.ts` | MySQL pool and typed tables |
 | `database/001-initial.sql` | Initial MySQL schema |
@@ -162,7 +193,7 @@ The kiosk upgrade adds three tables and extends the punch source enum. Existing 
 
 ## Verification and device integration
 
-GitHub Actions in `.github/workflows/ci.yml` runs the unit tests, TypeScript check and production build on Windows, plus controller/authentication integration tests against disposable MySQL 5.5.42 and 8.4 services. These tests cover transaction rollback, duplicate and concurrent imports, account isolation, samples, hashed sessions, password reset, login limits and database persistence. Check the Actions tab for the current result.
+GitHub Actions in `.github/workflows/ci.yml` runs the unit tests, actual CPU face-detector smoke test, TypeScript check and production build on Windows, plus controller/authentication integration tests against disposable MySQL 5.5.42 and 8.4 services. The database tests inject face-model results to verify encryption, consent, account isolation, challenge expiry/reuse, match/movement failures, limits, revocation and concurrent face/PIN clock-ins. The independent engine test loads real packaged models and detects the absence of a face in a generated blank JPEG. These automated checks do not measure recognition accuracy or anti-spoofing performance with real staff. Check the Actions tab for the current result.
 
 To run the MySQL suite manually, use a **new disposable database named `hadir_test_<name>`** with test connection environment variables, then run `npm run test:mysql`. The suite refuses a regular attendance database and leaves its test data there; it does not reset your real database.
 

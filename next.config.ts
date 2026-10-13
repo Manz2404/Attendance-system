@@ -1,6 +1,6 @@
 import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['mysql2'],
+  serverExternalPackages: ['mysql2', '@vladmandic/face-api', '@tensorflow/tfjs', '@tensorflow/tfjs-backend-wasm', 'jpeg-js'],
   poweredByHeader: false,
   async headers() {
     return [{ source: '/:path*', headers: [
