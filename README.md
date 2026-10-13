@@ -2,7 +2,7 @@
 
 A standalone attendance application for your Windows laptop. Source code belongs in `C:\Attendance-system`; attendance records are saved on the MySQL server you configure. SQLyog is the client you use to manage that server.
 
-This version includes employees, schedules, manual IN/OUT punches, CSV imports, daily attendance, monthly reports and CSV exports. Device registration stores hardware details; a real device adapter will be added after you choose a device with a supported SDK/API. No hardware connection is claimed in this version.
+This version includes employees, schedules, manual IN/OUT punches, CSV imports, daily attendance, monthly reports, CSV exports, and a PIN clock-in kiosk. Device registration stores hardware details; a real device adapter will be added after you choose a device with a supported SDK/API. No hardware connection is claimed in this version.
 
 ## Install on Windows
 
@@ -74,6 +74,23 @@ All reports use **Asia/Kuala_Lumpur (UTC+8)**. A completed continuous shift dedu
 
 Sample employees are optional and clearly labeled. Removing samples deletes those fictional employees and all punches linked to them, including manual punches you added to a sample employee. It keeps your own employees' records.
 
+## Clock-in kiosk
+
+1. Stop the running server, keep your existing `.env`, and run `setup-windows.cmd` after updating. Setup applies the new `002-kiosk.sql` migration and builds the app. Back up your MySQL database before the update.
+2. Sign in as the administrator and open **Kiosk** in the side menu.
+3. Choose an employee, enter and confirm a **six-digit PIN**, and click **Save PIN**. Leading zeros are supported. Share each PIN privately with its employee; PINs cannot be retrieved afterwards, only replaced or removed.
+4. On the computer/browser that will be the shared attendance station, click **Start kiosk & sign out**. This revokes the current administrator session in that browser and opens **http://127.0.0.1:3000/kiosk** (or your configured port).
+5. Staff choose their name, enter their PIN on the keyboard or number pad, and click **Clock in**. The success screen clears after five seconds for the next person. The timestamp is supplied by the server and attendance is saved to the normal MySQL punch table with source **kiosk**.
+6. Sign in as administrator to see the record in Attendance or Reports. For another kiosk browser, sign in on that browser and repeat **Start kiosk & sign out**.
+
+The kiosk cookie expires after 30 days. It only grants access to the staff-name list and PIN clock-in endpoint for its workspace; it grants no access to administrator screens or reports. **Disconnect all kiosks** revokes every paired browser for the current workspace. Removing a PIN or making an employee inactive removes their kiosk access. Resetting a PIN also clears that employee's failed-attempt lock.
+
+This kiosk records **clock-in only**, once per shift workday. A second submission returns the existing IN record (including manual/CSV clock-ins) without inserting another. Overnight shifts use the schedule's workday. Clock-out remains available through the administrator's manual attendance workflow.
+
+Five incorrect PINs lock that employee for 15 minutes across kiosk browsers. Each station also has a per-minute request limit. PINs use individually salted scrypt hashes, session tokens are hashed in MySQL, and no PIN/hash is included in API responses or exports. Names and employee codes are only listed on a browser an administrator has paired.
+
+The laptop/application and MySQL must be running. `/kiosk` alone does not make the app available from other computers or your domain; network/tunnel setup is a separate step. A kiosk is a shared credential station and does not prove the person's physical identity.
+
 ## Commands and troubleshooting
 
 Run commands from `C:\Attendance-system`:
@@ -124,7 +141,7 @@ npm run build
 npm start
 ```
 
-Migration files are checksummed and applied explicitly during setup/update, never during web requests. Do not edit an already applied migration. MySQL DDL commits automatically; an interrupted first setup can resume using its migration marker.
+The kiosk upgrade adds three tables and extends the punch source enum. Existing attendance and administrator accounts are retained. Migration files are checksummed and applied explicitly during setup/update, never during web requests. Do not edit an already applied migration. MySQL DDL commits automatically; an interrupted first setup can resume using its migration marker.
 
 ## Source map
 
@@ -134,6 +151,9 @@ Migration files are checksummed and applied explicitly during setup/update, neve
 | `app/api/workspace/route.ts` | Attendance controller: authenticated reads and writes |
 | `app/api/auth/login/route.ts` | Local sign-in and failed attempt limit |
 | `lib/auth.ts` | Hashed database sessions and logout |
+| `app/kiosk/`, `app/kiosk-settings.tsx` | Shared clock-in screen and administrator PIN setup |
+| `app/api/kiosk/` | Restricted clock-in and kiosk session endpoints |
+| `database/002-kiosk.sql` | PINs, kiosk sessions and attempt limits |
 | `lib/attendance.ts` | Attendance calculations and CSV handling |
 | `db/index.ts`, `db/schema.ts` | MySQL pool and typed tables |
 | `database/001-initial.sql` | Initial MySQL schema |

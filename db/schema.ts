@@ -55,8 +55,25 @@ export const punches = mysqlTable('hadir_punches', {
   id: id(), ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
   employeeId: varchar('employee_id', { length: 36 }).notNull().references(() => employees.id),
   timestamp: instant('timestamp').notNull(), kind: mysqlEnum('kind', ['IN', 'OUT']).notNull(),
-  source: mysqlEnum('source', ['manual', 'csv', 'sample']).notNull(),
+  source: mysqlEnum('source', ['manual', 'csv', 'sample', 'kiosk']).notNull(),
   deviceId: varchar('device_id', { length: 36 }).references(() => devices.id),
   note: varchar('note', { length: 240 }).notNull().default(''), dedupeKey: varchar('dedupe_key', { length: 150 }).notNull(),
   createdAt: instant('created_at').notNull(),
 }, t => [uniqueIndex('hadir_punches_dedupe_uq').on(t.ownerId, t.dedupeKey), index('hadir_punches_owner_time_idx').on(t.ownerId, t.timestamp)]);
+
+export const employeePins = mysqlTable('hadir_employee_pins', {
+  employeeId: varchar('employee_id', { length: 36 }).primaryKey().references(() => employees.id, { onDelete: 'cascade' }),
+  ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
+  pinHash: varchar('pin_hash', { length: 255 }).notNull(), updatedAt: instant('updated_at').notNull(),
+}, t => [index('hadir_employee_pins_owner_idx').on(t.ownerId)]);
+
+export const kioskSessions = mysqlTable('hadir_kiosk_sessions', {
+  tokenHash: varchar('token_hash', { length: 64 }).primaryKey(),
+  ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
+  expiresAt: instant('expires_at').notNull(), createdAt: instant('created_at').notNull(),
+}, t => [index('hadir_kiosk_sessions_owner_idx').on(t.ownerId), index('hadir_kiosk_sessions_expiry_idx').on(t.expiresAt)]);
+
+export const kioskAttempts = mysqlTable('hadir_kiosk_attempts', {
+  key: varchar('attempt_key', { length: 64 }).primaryKey(),
+  failures: int('failures').notNull(), windowStart: instant('window_start').notNull(),
+});

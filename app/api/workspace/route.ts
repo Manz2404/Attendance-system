@@ -1,6 +1,7 @@
 import { and, eq, inArray, asc } from 'drizzle-orm';
 import { getDb, type Connection } from '@/db';
-import { workspaces, employees, schedules, devices, punches } from '@/db/schema';
+import { workspaces, employees, schedules, devices, punches, employeePins, kioskAttempts } from '@/db/schema';
+import { hashPin, validPin, hashToken } from '@/lib/password.mjs';
 import { getCurrentUser } from '@/lib/auth';
 import { allowedOrigin, readJSON, RequestError } from '@/lib/request';
 import { dateMY, addDays, localInstant, minuteOfDay, shiftDuration, workDate, type Schedule } from '@/lib/attendance';
@@ -27,14 +28,16 @@ export async function GET() {
   const user = await getCurrentUser(); if (!user) return json({ error: 'Please sign in to continue.' }, 401);
   try {
     const db = getDb(), owner = user.userId;
-    const [ws, staff, shifts, logs, hardware] = await Promise.all([
+    const [ws, staff, shifts, logs, hardware, pins] = await Promise.all([
       db.select().from(workspaces).where(eq(workspaces.ownerId, owner)).limit(1),
       db.select().from(employees).where(eq(employees.ownerId, owner)).orderBy(asc(employees.name)),
       db.select().from(schedules).where(eq(schedules.ownerId, owner)),
       db.select().from(punches).where(eq(punches.ownerId, owner)).orderBy(asc(punches.timestamp)),
       db.select().from(devices).where(eq(devices.ownerId, owner)),
+      db.select({ employeeId: employeePins.employeeId }).from(employeePins).where(eq(employeePins.ownerId, owner)),
     ]);
-    return json({ initialized: !!ws[0], name: ws[0]?.name ?? 'My workspace', employees: staff, schedules: shifts, punches: logs, devices: hardware, today: dateMY() });
+    const hasPin = new Set(pins.map(p => p.employeeId));
+    return json({ initialized: !!ws[0], name: ws[0]?.name ?? 'My workspace', employees: staff.map(e => ({ ...e, kioskPinSet: hasPin.has(e.id) })), schedules: shifts, punches: logs, devices: hardware, today: dateMY() });
   } catch (error) { console.error('Attendance read failed', error instanceof Error ? error.name : 'server error'); return json({ error: 'Could not load your workspace. Please try again.' }, 500); }
 }
 
@@ -89,6 +92,18 @@ export async function POST(request: Request) {
     // Serialize writes per workspace, including duplicate checks and CSV imports.
     const ws = await first(db.select().from(workspaces).where(eq(workspaces.ownerId, owner)).limit(1).for('update'));
     if (!ws) throw new InputError('Initialize your workspace first.');
+    if (action === 'employee-pin' || action === 'remove-employee-pin') {
+      const employeeId = field(body.employeeId, 'Employee', 36);
+      const employee = await first(db.select({ id: employees.id }).from(employees).where(and(eq(employees.ownerId, owner), eq(employees.id, employeeId))).limit(1));
+      if (!employee) throw new InputError('Employee not found.');
+      if (action === 'employee-pin') {
+        if (!validPin(body.pin)) throw new InputError('Use a six-digit PIN.');
+        const pinHash = await hashPin(body.pin), updatedAt = new Date().toISOString();
+        await db.insert(employeePins).values({ employeeId, ownerId: owner, pinHash, updatedAt }).onDuplicateKeyUpdate({ set: { pinHash, updatedAt } });
+      } else await db.delete(employeePins).where(and(eq(employeePins.ownerId, owner), eq(employeePins.employeeId, employeeId)));
+      await db.delete(kioskAttempts).where(eq(kioskAttempts.key, hashToken(`kiosk-pin|${owner}|${employeeId}`)));
+      return json({ message: action === 'employee-pin' ? 'Kiosk PIN saved.' : 'Kiosk PIN removed.' });
+    }
     if (action === 'sample') return json(await addSample(db, owner));
     if (action === 'clear-sample') {
       const sample = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.ownerId, owner), eq(employees.isSample, true)));
