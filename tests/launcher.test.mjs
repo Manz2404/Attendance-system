@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, rm, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, mkdir, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -63,8 +63,9 @@ test('Windows desktop shortcut targets the project launcher and handles folder s
     await run('cmd.exe', ['/d', '/s', '/c', 'create-desktop-shortcut.cmd --quiet'], { cwd: project, env: { ...process.env, HADIR_SHORTCUT_DIRECTORY: desktop }, timeout: 15000 });
     const result = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "$shell=New-Object -ComObject WScript.Shell; $link=$shell.CreateShortcut((Join-Path $env:HADIR_SHORTCUT_DIRECTORY 'Hadir Attendance.lnk')); @{target=$link.TargetPath;directory=$link.WorkingDirectory}|ConvertTo-Json -Compress"], { env: { ...process.env, HADIR_SHORTCUT_DIRECTORY: desktop }, timeout: 15000 });
     const shortcut = JSON.parse(result.stdout.trim());
-    assert.equal(shortcut.target.toLowerCase(), join(project, 'start-windows.cmd').toLowerCase());
-    assert.equal(shortcut.directory.replace(/\\$/, '').toLowerCase(), project.toLowerCase());
+    // Windows can expand a short TEMP path (RUNNER~1) when saving a shortcut.
+    assert.equal((await realpath(shortcut.target)).toLowerCase(), (await realpath(join(project, 'start-windows.cmd'))).toLowerCase());
+    assert.equal((await realpath(shortcut.directory)).toLowerCase(), (await realpath(project)).toLowerCase());
     const forwarder = await readFile('Hadir-Attendance.url', 'utf8'); assert.match(forwarder, /^\[InternetShortcut\]\r?\nURL=http:\/\/127\.0\.0\.1:3000\//);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
