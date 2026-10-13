@@ -17,17 +17,16 @@ loadLocalEnvironment();
 test('MySQL migrations, controller transactions and local authentication', async t => {
   // This suite creates test data. It refuses a user's regular attendance database.
   if (!/^hadir_test_[a-z0-9_]+$/.test(process.env.DB_NAME || '')) throw new Error('Use a disposable database named hadir_test_<name> to run test:mysql.');
-  const connection = await mysql.createConnection(databaseOptions());
   const runtime = resolve('.test-runtime'); await mkdir(runtime, { recursive: true });
   const routePath = resolve(runtime, 'workspace.mjs'), loginPath = resolve(runtime, 'login.mjs'), authPath = resolve(runtime, 'auth.mjs');
   const kioskPath = resolve(runtime, 'kiosk.mjs'), kioskAdminPath = resolve(runtime, 'kiosk-admin.mjs');
   const authMock = { name: 'mock-account', setup(builder) {
-    builder.onResolve({ filter: /^@\/lib\/auth$/ }, () => ({ path: 'mock-auth', namespace: 'test' }));
-    builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: 'export async function getCurrentUser(){return globalThis.__authUser ?? null;} export async function createSession(id){globalThis.__createdSession=id;}', loader: 'js' }));
+    builder.onResolve({ filter: /^@\/lib\/auth$/ }, () => ({ path: 'mock-auth', namespace: 'auth-test' }));
+    builder.onLoad({ filter: /.*/, namespace: 'auth-test' }, () => ({ contents: 'export async function getCurrentUser(){return globalThis.__authUser ?? null;} export async function createSession(id){globalThis.__createdSession=id;}', loader: 'js' }));
   } };
   const cookiesMock = { name: 'mock-cookies', setup(builder) {
-    builder.onResolve({ filter: /^next\/headers$/ }, () => ({ path: 'mock-cookies', namespace: 'test' }));
-    builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: 'export async function cookies(){return globalThis.__cookieStore;}', loader: 'js' }));
+    builder.onResolve({ filter: /^next\/headers$/ }, () => ({ path: 'mock-cookies', namespace: 'cookies-test' }));
+    builder.onLoad({ filter: /.*/, namespace: 'cookies-test' }, () => ({ contents: 'export async function cookies(){return globalThis.__cookieStore;}', loader: 'js' }));
   } };
   const shared = { bundle: true, platform: 'node', format: 'esm', packages: 'external', tsconfig: 'tsconfig.json' };
   await build({ ...shared, entryPoints: ['app/api/workspace/route.ts'], outfile: routePath, plugins: [authMock] });
@@ -37,6 +36,7 @@ test('MySQL migrations, controller transactions and local authentication', async
   await build({ ...shared, entryPoints: ['app/api/kiosk/admin/route.ts'], outfile: kioskAdminPath, plugins: [cookiesMock, authMock] });
   const route = await import(pathToFileURL(routePath)), login = await import(pathToFileURL(loginPath)), auth = await import(pathToFileURL(authPath));
   const kiosk = await import(pathToFileURL(kioskPath)), kioskAdmin = await import(pathToFileURL(kioskAdminPath));
+  const connection = await mysql.createConnection(databaseOptions());
   const post = async (body, headers = {}) => {
     const response = await route.POST(new Request('http://127.0.0.1:3000/api/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }));
     return { status: response.status, data: await response.json() };
