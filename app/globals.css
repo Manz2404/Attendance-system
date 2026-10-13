@@ -18,7 +18,7 @@
 :root[data-theme="dark"] .primary{background:#287657;color:#fff}:root[data-theme="dark"] .primary:hover:not(:disabled){background:#205f46}:root[data-theme="dark"] .brand-mark{background:#287657}:root[data-theme="dark"] .danger{background:#a54440}:root[data-theme="dark"] .auth-page{background:radial-gradient(ellipse at 25% 20%,#21382b,transparent 60%),var(--surface)}
 .theme-toggle{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:8px 10px;min-height:36px;font-size:11px;white-space:nowrap}.theme-toggle:hover{background:var(--soft-green)}.auth-theme{position:absolute;top:20px;right:20px}@media(max-width:600px){.theme-toggle-label{display:none}.theme-toggle{padding:8px}.topbar-right{gap:8px}}
 
-/* Shared clock-in station and administrator PIN setup. */
+/* Shared attendance station and administrator PIN setup. */
 .kiosk-screen{min-height:100vh;display:flex;flex-direction:column;padding:28px 36px;background:var(--surface)}
 .kiosk-header{display:flex;align-items:center;justify-content:space-between;gap:20px;width:100%;max-width:1200px;margin:0 auto 24px}
 .kiosk-header .auth-brand{font-size:30px;margin:0}.kiosk-header>div:last-child{display:flex;align-items:center;gap:16px}.kiosk-workspace{color:var(--muted);font-size:12px}

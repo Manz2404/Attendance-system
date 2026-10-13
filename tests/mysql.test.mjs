@@ -11,8 +11,8 @@ import { migrate } from '../scripts/migrate.mjs';
 import { checkDatabase } from '../scripts/check-db.mjs';
 import { createAdmin } from '../scripts/admin.mjs';
 import { hashToken } from '../lib/password.mjs';
-import { openFace, FACE_MODEL } from '../lib/face-policy.mjs';
-import { dateMY, addDays, localInstant } from '../lib/attendance.ts';
+import { openFace, FACE_MODEL, faceChallengeHash } from '../lib/face-policy.mjs';
+import { dateMY, addDays, localInstant, summarizeDay } from '../lib/attendance.ts';
 
 loadLocalEnvironment();
 test('MySQL migrations, controller transactions and local authentication', async t => {
@@ -237,7 +237,7 @@ test('MySQL migrations, controller transactions and local authentication', async
     });
     await t.test('concurrent kiosk submissions save exactly one server-timestamped IN', async () => {
       const start = Date.now();
-      const results = await Promise.all([kioskCall({ employeeId: employee.id, pin, timestamp: '2000-01-01T00:00:00Z', kind: 'OUT' }), kioskCall({ employeeId: employee.id, pin })]);
+      const results = await Promise.all([kioskCall({ employeeId: employee.id, pin, timestamp: '2000-01-01T00:00:00Z', kind: 'IN' }), kioskCall({ employeeId: employee.id, pin })]);
       assert.ok(results.every(r => r.status === 200), JSON.stringify(results)); assert.equal(results.filter(r => !r.data.already).length, 1);
       const [rows] = await connection.execute("SELECT * FROM hadir_punches WHERE owner_id = ? AND source = 'kiosk'", [owner]);
       assert.equal(rows.length, 1); assert.equal(rows[0].kind, 'IN'); assert.ok(Date.parse(rows[0].timestamp) >= start && Date.parse(rows[0].timestamp) <= Date.now());
@@ -315,10 +315,10 @@ test('MySQL migrations, controller transactions and local authentication', async
       assert.deepEqual(Object.keys(result.data.employees[0]).sort(), ['code', 'hasFace', 'hasPin', 'id', 'name']);
       assert.equal((await post({ action: 'employee-pin', employeeId: employee.id, pin })).status, 200);
     });
-    const challenge = async (id = faceEmployee.id) => {
-      const result = await faceCall({ action: 'challenge', employeeId: id }); assert.equal(result.status, 200, JSON.stringify(result)); return result.data.challenge;
+    const challenge = async (id = faceEmployee.id, kind = 'IN') => {
+      const result = await faceCall({ action: 'challenge', employeeId: id, kind }); assert.equal(result.status, 200, JSON.stringify(result)); return result.data.challenge;
     };
-    const scan = async (token, id = faceEmployee.id) => faceCall({ action: 'scan', employeeId: id, challenge: token, images });
+    const scan = async (token, id = faceEmployee.id, kind = 'IN') => faceCall({ action: 'scan', employeeId: id, kind, challenge: token, images });
     await t.test('static images, wrong faces and ambiguous images cannot create attendance', async () => {
       const count = (await connection.query('SELECT COUNT(*) AS n FROM hadir_punches'))[0][0].n;
       assert.equal((await faceCall({ action: 'challenge', employeeId: faceEmployee.id }, { origin: 'https://evil.example' })).status, 403);
@@ -331,9 +331,9 @@ test('MySQL migrations, controller transactions and local authentication', async
     });
     await t.test('challenges expire, remain bound to their employee, and are never stored in plain text', async () => {
       const expired = await challenge();
-      const [[row]] = await connection.execute('SELECT token_hash FROM hadir_face_challenges WHERE token_hash = ?', [hashToken(expired)]);
-      assert.equal(row.token_hash, hashToken(expired)); assert.notEqual(row.token_hash, expired);
-      await connection.execute('UPDATE hadir_face_challenges SET expires_at = ? WHERE token_hash = ?', ['2000-01-01T00:00:00.000Z', hashToken(expired)]);
+      const [[row]] = await connection.execute('SELECT token_hash FROM hadir_face_challenges WHERE token_hash = ?', [faceChallengeHash(expired, 'IN')]);
+      assert.equal(row.token_hash, faceChallengeHash(expired, 'IN')); assert.notEqual(row.token_hash, expired);
+      await connection.execute('UPDATE hadir_face_challenges SET expires_at = ? WHERE token_hash = ?', ['2000-01-01T00:00:00.000Z', faceChallengeHash(expired, 'IN')]);
       assert.equal((await scan(expired)).status, 409);
       const bound = await challenge(); assert.equal((await scan(bound, employee.id)).status, 409);
       const newer = await challenge(); assert.equal((await scan(bound)).status, 409);
@@ -369,6 +369,65 @@ test('MySQL migrations, controller transactions and local authentication', async
       globalThis.__faceScan = async () => { assert.equal((await station('revoke')).status, 200); return frames(-0.1); };
       assert.equal((await scan(pending, employee.id)).status, 401);
       assert.equal((await faceCall({ action: 'challenge', employeeId: employee.id })).status, 401);
+    });
+    let outEmployee;
+    await t.test('clock-out requires verification and an existing clock-in; invalid events are rejected', async () => {
+      globalThis.__authUser = { userId: owner }; globalThis.__faceScan = () => structuredClone(good);
+      assert.equal((await post({ action: 'employee', code: 'EMP-OUT', name: 'Clock-out Test Employee', department: 'Support', scheduleId: schedule.id, active: true, startDate: addDays(day, -30) })).status, 200);
+      outEmployee = (await get()).data.employees.find(e => e.code === 'EMP-OUT');
+      assert.equal((await post({ action: 'employee-pin', employeeId: outEmployee.id, pin })).status, 200);
+      assert.equal((await enroll({ action: 'enroll', employeeId: outEmployee.id, consent: true, images })).status, 200);
+      assert.equal((await station('start')).status, 200);
+      assert.equal((await kioskCall({ employeeId: outEmployee.id, pin: '999999', kind: 'OUT' })).status, 401);
+      assert.equal((await kioskCall({ employeeId: outEmployee.id, pin, kind: 'OUT' })).status, 409);
+      const [[attempt]] = await connection.execute('SELECT failures FROM hadir_kiosk_attempts WHERE attempt_key = ?', [hashToken(`kiosk-pin|${owner}|${outEmployee.id}`)]); assert.equal(attempt.failures, 0);
+      const [[stationAttempts]] = await connection.execute('SELECT failures FROM hadir_kiosk_attempts WHERE attempt_key = ?', [hashToken(`kiosk-station|${hashToken(jar.get('hadir_kiosk').value)}`)]); assert.equal(stationAttempts.failures, 2);
+      assert.equal((await scan(await challenge(outEmployee.id, 'OUT'), outEmployee.id, 'OUT')).status, 409);
+      assert.equal((await kioskCall({ employeeId: outEmployee.id, pin, kind: 'DELETE' })).status, 400);
+      assert.equal((await faceCall({ action: 'challenge', employeeId: outEmployee.id, kind: 'DELETE' })).status, 400);
+      const [[row]] = await connection.execute('SELECT COUNT(*) AS n FROM hadir_punches WHERE employee_id = ?', [outEmployee.id]); assert.equal(row.n, 0);
+    });
+    await t.test('a face challenge cannot be changed from IN to OUT and a mismatched face cannot clock out', async () => {
+      assert.equal((await post({ action: 'import', rows: [{ code: outEmployee.code, timestamp: localInstant(dateMY(), '00:00'), kind: 'IN' }] })).status, 200);
+      const token = await challenge(outEmployee.id, 'IN');
+      assert.equal((await scan(token, outEmployee.id, 'OUT')).status, 409);
+      const correct = await scan(token, outEmployee.id, 'IN'); assert.equal(correct.status, 200); assert.equal(correct.data.already, true); assert.equal(correct.data.kind, 'IN');
+      globalThis.__faceScan = () => frames(-0.1);
+      assert.equal((await scan(await challenge(outEmployee.id, 'OUT'), outEmployee.id, 'OUT')).status, 400);
+      globalThis.__faceScan = () => structuredClone(good);
+      const [[row]] = await connection.execute("SELECT COUNT(*) AS n FROM hadir_punches WHERE employee_id = ? AND kind = 'OUT'", [outEmployee.id]); assert.equal(row.n, 0);
+    });
+    await t.test('concurrent PIN and face clock-outs close an imported IN exactly once using server time', async () => {
+      const token = await challenge(outEmployee.id, 'OUT'), start = Date.now();
+      const results = await Promise.all([scan(token, outEmployee.id, 'OUT'), kioskCall({ employeeId: outEmployee.id, pin, kind: 'OUT', timestamp: '2000-01-01T00:00:00.000Z' })]);
+      assert.ok(results.every(r => r.status === 200), JSON.stringify(results)); assert.equal(results.filter(r => !r.data.already).length, 1);
+      assert.ok(results.every(r => r.data.kind === 'OUT'));
+      const [rows] = await connection.execute('SELECT kind, timestamp, source FROM hadir_punches WHERE employee_id = ? ORDER BY timestamp', [outEmployee.id]);
+      assert.equal(rows.length, 2); assert.deepEqual(rows.map(r => r.kind), ['IN', 'OUT']); assert.equal(rows[0].source, 'csv');
+      assert.ok(['face', 'kiosk'].includes(rows[1].source)); assert.ok(Date.parse(rows[1].timestamp) >= start && Date.parse(rows[1].timestamp) <= Date.now());
+      const repeat = await kioskCall({ employeeId: outEmployee.id, pin, kind: 'OUT' });
+      assert.equal(repeat.status, 200); assert.equal(repeat.data.already, true); assert.equal(repeat.data.timestamp, rows[1].timestamp);
+      assert.equal((await scan(token, outEmployee.id, 'OUT')).status, 409);
+      const data = (await get()).data, report = summarizeDay(outEmployee, dateMY(), data.punches, schedule);
+      assert.equal(report.clockOut, rows[1].timestamp); assert.equal(report.open, false); assert.equal(report.issues.length, 0);
+    });
+    await t.test('face clock-out stores an OUT source and repeated verification returns that saved OUT', async () => {
+      globalThis.__faceScan = () => frames(-0.1);
+      const result = await scan(await challenge(employee.id, 'OUT'), employee.id, 'OUT');
+      assert.equal(result.status, 200); assert.equal(result.data.already, false); assert.equal(result.data.kind, 'OUT');
+      const [[row]] = await connection.execute("SELECT timestamp, source, note FROM hadir_punches WHERE employee_id = ? AND kind = 'OUT' AND source = 'face'", [employee.id]);
+      assert.equal(row.source, 'face'); assert.equal(row.timestamp, result.data.timestamp); assert.match(row.note, /clock-out/);
+      const repeat = await scan(await challenge(employee.id, 'OUT'), employee.id, 'OUT');
+      assert.equal(repeat.status, 200); assert.equal(repeat.data.already, true); assert.equal(repeat.data.timestamp, result.data.timestamp); assert.equal(repeat.data.kind, 'OUT');
+    });
+    await t.test('an administrator can reopen the session and staff can complete it without changing earlier pairs', async () => {
+      assert.equal((await post({ action: 'punch', code: outEmployee.code, timestamp: new Date().toISOString(), kind: 'IN' })).status, 200);
+      const result = await kioskCall({ employeeId: outEmployee.id, pin, kind: 'OUT' }); assert.equal(result.status, 200); assert.equal(result.data.already, false);
+      const data = (await get()).data, report = summarizeDay(outEmployee, dateMY(), data.punches, schedule);
+      assert.equal(report.events.length, 4); assert.equal(report.clockOut, result.data.timestamp); assert.equal(report.open, false); assert.equal(report.issues.length, 0);
+      const repeat = await kioskCall({ employeeId: outEmployee.id, pin, kind: 'OUT' }); assert.equal(repeat.status, 200); assert.equal(repeat.data.already, true);
+      assert.equal(report.clockOut, repeat.data.timestamp);
+      assert.equal((await kioskCall({ employeeId: outEmployee.id, pin, kind: 'OUT' }, { origin: 'https://evil.example' })).status, 403);
     });
   } finally {
     await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb;

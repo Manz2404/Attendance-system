@@ -1,9 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FACE_MODEL, faceKey, sealFace, openFace, validDescriptor, faceDistance, matchesFace, consistentFaces, motionPassed } from '../lib/face-policy.mjs';
+import { FACE_MODEL, faceKey, sealFace, openFace, validDescriptor, faceDistance, matchesFace, consistentFaces, motionPassed, faceChallengeHash } from '../lib/face-policy.mjs';
 import { imageBytes, FaceInputError } from '../lib/face-engine.mjs';
 
 const base = Array(128).fill(0.1), samples = [base, base.map(n => n + 0.002), base.map(n => n - 0.002)];
+test('face challenge hashes bind the selected IN or OUT event', () => {
+  const token = 'a'.repeat(64), clockIn = faceChallengeHash(token, 'IN'), clockOut = faceChallengeHash(token, 'OUT');
+  assert.match(clockIn, /^[a-f0-9]{64}$/); assert.notEqual(clockIn, clockOut); assert.notEqual(clockIn, token);
+  assert.equal(faceChallengeHash(token, 'IN'), clockIn);
+  assert.throws(() => faceChallengeHash(token, 'DELETE'), /Invalid face challenge/);
+  assert.throws(() => faceChallengeHash('invalid', 'OUT'), /Invalid face challenge/);
+});
 test('face templates are authenticated, randomized and bound to employee and workspace', () => {
   const key = faceKey('1'.repeat(64)), a = sealFace(samples, 'owner', 'employee', key), b = sealFace(samples, 'owner', 'employee', key);
   assert.notEqual(a, b); assert.ok(!a.includes(JSON.stringify(base)));

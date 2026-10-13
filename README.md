@@ -2,7 +2,7 @@
 
 A standalone attendance application for your Windows laptop. Source code belongs in `C:\Attendance-system`; attendance records are saved on the MySQL server you configure. SQLyog is the client you use to manage that server.
 
-This version includes employees, schedules, manual IN/OUT punches, CSV imports, daily attendance, monthly reports, CSV exports, and a clock-in kiosk with PIN or webcam face verification. It supports a laptop camera or USB webcam. Device registration stores plans for separate attendance hardware; a device adapter still needs a supported SDK/API.
+This version includes employees, schedules, manual IN/OUT punches, CSV imports, daily attendance, monthly reports, CSV exports, and an attendance kiosk with PIN or webcam face verification for both clock-in and clock-out. It supports a laptop camera or USB webcam. Device registration stores plans for separate attendance hardware; a device adapter still needs a supported SDK/API.
 
 ## Install on Windows
 
@@ -75,18 +75,20 @@ All reports use **Asia/Kuala_Lumpur (UTC+8)**. A completed continuous shift dedu
 
 Sample employees are optional and clearly labeled. Removing samples deletes those fictional employees and all punches linked to them, including manual punches you added to a sample employee. It keeps your own employees' records.
 
-## Clock-in kiosk
+## Staff clock-in and clock-out kiosk
 
 1. Stop the running server, keep your existing `.env`, and run `setup-windows.cmd` after updating. Setup applies unapplied kiosk and face migrations and builds the app. Back up your MySQL database and `.env` before the update.
 2. Sign in as the administrator and open **Kiosk** in the side menu.
 3. Choose an employee, enter and confirm a **six-digit PIN**, and click **Save PIN**. Leading zeros are supported. Share each PIN privately with its employee; PINs cannot be retrieved afterwards, only replaced or removed.
 4. On the computer/browser that will be the shared attendance station, click **Start kiosk & sign out**. This revokes the current administrator session in that browser and opens **http://127.0.0.1:3000/kiosk** (or your configured port).
-5. Staff choose their name, enter their PIN on the keyboard or number pad, and click **Clock in**. The success screen clears after five seconds for the next person. The timestamp is supplied by the server and attendance is saved to the normal MySQL punch table with source **kiosk**.
+5. Staff choose **Clock in** or **Clock out**, select their name, enter their PIN on the keyboard or number pad, and click the matching button. The success screen confirms the selected event and clears after five seconds for the next person. The timestamp is supplied by the server and attendance is saved to the normal MySQL punch table with source **kiosk**.
 6. Sign in as administrator to see the record in Attendance or Reports. For another kiosk browser, sign in on that browser and repeat **Start kiosk & sign out**.
 
 The kiosk cookie expires after 30 days. It only grants access to its workspace's staff-name list and restricted clock-in endpoints; it grants no access to administrator screens or reports. **Disconnect all kiosks** revokes every paired browser for the current workspace. Removing a PIN disables PIN entry; removing a face disables face entry. Staff with neither method, or inactive staff, are unavailable at the kiosk. Resetting a PIN clears that employee's failed PIN attempts.
 
-This kiosk records **clock-in only**, once per shift workday. A second submission returns the existing IN record (including manual/CSV clock-ins) without inserting another. Overnight shifts use the schedule's workday. Clock-out remains available through the administrator's manual attendance workflow.
+The kiosk records one initial IN per shift workday. Repeating **Clock in** returns the existing IN record (including manual/CSV clock-ins) without inserting another. **Clock out** completes an open IN for that workday and records OUT. If the session is already complete, repeated clock-outs return the saved OUT, including when PIN and face submissions arrive together. A clock-out without a clock-in is rejected; the administrator can correct a missing record through **Attendance → Record punch**. If an administrator records another IN after a completed session, staff can clock out to close that new session. Overnight punches follow the existing schedule workday, including its two-hour checkout window after the scheduled end.
+
+Version **0.4.1** adds staff clock-out using the existing IN/OUT columns and encrypted face enrollments; it needs no new database migration. Stop the server, update your application files, retain `.env`, and run `setup-windows.cmd` to rebuild, then restart and refresh the kiosk page. If you use the LAN startup command on your attendance PC, use that command again after rebuilding.
 
 Five incorrect PINs lock that employee for 15 minutes across kiosk browsers. Each station also has a per-minute request limit. PINs use individually salted scrypt hashes, session tokens are hashed in MySQL, and no PIN/hash is included in API responses or exports. Names and employee codes are only listed on a browser an administrator has paired.
 
@@ -98,9 +100,9 @@ The laptop/application and MySQL must be running. `/kiosk` alone does not make t
 2. Sign in as administrator and open **Kiosk → Face enrollment**. Choose an employee and confirm that they agree to enrollment. Offer PIN entry to employees who prefer it or cannot be matched.
 3. Click **Enroll face → Start camera** and allow browser camera permission. If multiple cameras are connected, select the laptop or USB camera and click Start camera again. Use even lighting and keep one person in the guide.
 4. Click **Capture enrollment**. Follow the three prompts: look straight, turn slightly to one side, then look straight again. An administrator can replace or remove an enrollment on this screen. One face cannot be assigned to two employees in the same workspace.
-5. Click **Start kiosk & sign out**. Staff choose their name, select **Face scan**, start the camera, and click **Scan face & clock in**. They follow the head-turn prompts. A match saves a server-timestamped IN record with source **face**; repeated face or PIN entries return the existing workday's clock-in.
+5. Click **Start kiosk & sign out**. Staff choose **Clock in** or **Clock out**, select their name and **Face scan**, start the camera, and click **Scan face & clock in** or **Scan face & clock out**. They follow the head-turn prompts. A match saves the selected event with a server timestamp and source **face**. Clock-out requires an open IN; repeated face or PIN entries return the saved record.
 
-Face scanning verifies the selected employee; it does not automatically identify everyone walking past the camera. Staff may use PIN entry if a PIN is set. A face-only employee can also use the kiosk. Clock-out remains the administrator's manual workflow.
+Face scanning verifies the selected employee; it does not automatically identify everyone walking past the camera. Staff may use PIN entry if a PIN is set. A face-only employee can also clock in and out at the kiosk. Administrators can still enter manual IN/OUT corrections.
 
 Camera permission works on **http://127.0.0.1:3000**, **http://localhost:3000**, or an **HTTPS** deployment. Plain HTTP on a LAN address normally cannot open a camera. Opening the kiosk on your domain still requires hosting or a tunnel; owning the domain alone does not run this application. Model processing uses the attendance server's CPU, so older laptops may scan more slowly.
 
@@ -108,7 +110,7 @@ Three small camera JPEGs are sent to your own attendance server and processed in
 
 **Keep `.env` with your secure database backup.** Losing or changing `FACE_ENCRYPTION_KEY` makes stored face enrollments unreadable; re-enroll employees in that case. Never commit the key or real employee photos to GitHub. Removing an enrollment deletes its template and outstanding scan tokens from the current database; manage old database backups according to your retention needs.
 
-Each scan uses a hashed, employee- and kiosk-bound token that expires after 90 seconds and can be used only once. Five failed face scans lock face entry for that employee for 15 minutes; PIN entry remains available. Re-enrollment clears the face lock. Each kiosk also limits scan starts per minute.
+Each scan uses a hashed token bound to the employee, kiosk and selected IN/OUT event. It expires after 90 seconds and can be used only once. Changing the selection restarts camera capture. Five failed face scans lock face entry for that employee for 15 minutes; PIN entry remains available. Re-enrollment clears the face lock. Each kiosk also limits scan starts per minute.
 
 **Use a supervised kiosk.** The head-turn check rejects a stationary pose; it is a basic movement check, not certified liveness detection. An ordinary webcam cannot reliably prevent photo/video spoofing. Matching can fail under poor lighting or vary by person; PIN fallback and administrator review remain available. Test enrollment, matching and duplicate clock-ins on your own camera before relying on the kiosk.
 
@@ -178,11 +180,11 @@ The PIN upgrade adds three tables; the face upgrade adds two more and extends th
 | `app/api/workspace/route.ts` | Attendance controller: authenticated reads and writes |
 | `app/api/auth/login/route.ts` | Local sign-in and failed attempt limit |
 | `lib/auth.ts` | Hashed database sessions and logout |
-| `app/kiosk/`, `app/kiosk-settings.tsx` | Shared clock-in screen and administrator PIN setup |
-| `app/api/kiosk/` | Restricted clock-in and kiosk session endpoints |
+| `app/kiosk/`, `app/kiosk-settings.tsx` | Shared clock-in/out screen and administrator PIN setup |
+| `app/api/kiosk/` | Restricted attendance and kiosk session endpoints |
 | `app/camera-capture.tsx`, `app/face-settings.tsx` | Camera capture and administrator face enrollment |
 | `lib/face-engine.mjs`, `lib/face-policy.mjs` | Server-side face extraction, matching, movement and template encryption |
-| `lib/kiosk-punch.ts` | Shared face/PIN duplicate-safe clock-in |
+| `lib/kiosk-punch.ts` | Shared face/PIN verification of open sessions and duplicate handling |
 | `database/002-kiosk.sql` | PINs, kiosk sessions and attempt limits |
 | `database/003-face.sql` | Encrypted templates and one-use scan challenges |
 | `lib/attendance.ts` | Attendance calculations and CSV handling |
@@ -193,7 +195,7 @@ The PIN upgrade adds three tables; the face upgrade adds two more and extends th
 
 ## Verification and device integration
 
-GitHub Actions in `.github/workflows/ci.yml` runs the unit tests, actual CPU face-detector smoke test, TypeScript check and production build on Windows, plus controller/authentication integration tests against disposable MySQL 5.5.42 and 8.4 services. The database tests inject face-model results to verify encryption, consent, account isolation, challenge expiry/reuse, match/movement failures, limits, revocation and concurrent face/PIN clock-ins. The independent engine test loads real packaged models and detects the absence of a face in a generated blank JPEG. These automated checks do not measure recognition accuracy or anti-spoofing performance with real staff. Check the Actions tab for the current result.
+GitHub Actions in `.github/workflows/ci.yml` runs the unit tests, actual CPU face-detector smoke test, TypeScript check and production build on Windows, plus controller/authentication integration tests against disposable MySQL 5.5.42 and 8.4 services. The database tests inject face-model results to verify encryption, consent, account isolation, event-bound challenge expiry/reuse, match/movement failures, limits, revocation, concurrent face/PIN clock-ins and clock-outs, missing-IN rejection, completion of imported sessions, and report updates. The independent engine test loads real packaged models and detects the absence of a face in a generated blank JPEG. These automated checks do not measure recognition accuracy or anti-spoofing performance with real staff. Check the Actions tab for the current result.
 
 To run the MySQL suite manually, use a **new disposable database named `hadir_test_<name>`** with test connection environment variables, then run `npm run test:mysql`. The suite refuses a regular attendance database and leaves its test data there; it does not reset your real database.
 

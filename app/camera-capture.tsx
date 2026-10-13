@@ -2,8 +2,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, LoaderCircle, ScanFace, X } from 'lucide-react';
 
-export default function CameraCapture({ mode, disabled = false, beforeCapture, onCapture, onClose }: {
+export default function CameraCapture({ mode, punchKind = 'IN', disabled = false, beforeCapture, onCapture, onClose }: {
   mode: 'enroll' | 'scan'; disabled?: boolean; beforeCapture?: () => Promise<string>;
+  punchKind?: 'IN' | 'OUT';
   onCapture: (images: string[], challenge?: string) => Promise<void>; onClose?: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null), stream = useRef<MediaStream | null>(null), generation = useRef(0), mounted = useRef(true);
@@ -55,7 +56,7 @@ export default function CameraCapture({ mode, disabled = false, beforeCapture, o
     {devices.length > 1 && <label>Camera<select value={deviceId} disabled={busy} onChange={e => { stop(); setDeviceId(e.target.value); }}><option value="">Default camera</option>{devices.map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${i + 1}`}</option>)}</select></label>}
     <p className="face-instruction" role="status" aria-live="polite">{status || 'Use even lighting and keep one person in view.'}</p>
     {error && <div className="auth-error" role="alert">{error}</div>}
-    <div className="kiosk-admin-actions">{!ready ? <button type="button" className="button secondary" disabled={busy || disabled} onClick={start}>{busy ? <LoaderCircle className="spin" size={17} /> : <Camera size={17} />}Start camera</button> : <button type="button" className="button primary" disabled={busy || disabled} onClick={capture}>{busy ? <LoaderCircle className="spin" size={17} /> : <ScanFace size={17} />}{busy ? 'Processing…' : mode === 'scan' ? 'Scan face & clock in' : 'Capture enrollment'}</button>}
+    <div className="kiosk-admin-actions">{!ready ? <button type="button" className="button secondary" disabled={busy || disabled} onClick={start}>{busy ? <LoaderCircle className="spin" size={17} /> : <Camera size={17} />}Start camera</button> : <button type="button" className="button primary" disabled={busy || disabled} onClick={capture}>{busy ? <LoaderCircle className="spin" size={17} /> : <ScanFace size={17} />}{busy ? 'Processing…' : mode === 'scan' ? `Scan face & clock ${punchKind === 'OUT' ? 'out' : 'in'}` : 'Capture enrollment'}</button>}
       {(ready || busy) && <button type="button" className="button secondary" onClick={() => { stop(); setBusy(false); setStatus(''); }}>Stop camera</button>}
       {onClose && <button type="button" className="text-button" onClick={() => { stop(); onClose(); }}><X size={16} />Close</button>}
     </div><p className="kiosk-hint">Camera photos are processed on your attendance server and discarded. Only encrypted face templates are saved.</p>

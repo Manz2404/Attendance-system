@@ -43,12 +43,12 @@ export default function KioskSettings({ employees, busy, save, onSaved }: { empl
       <p className="settings-copy">PINs are stored as salted hashes and cannot be viewed. Reset a PIN if someone forgets it.</p>
     </section>
     <FaceSettings employees={employees} disabled={busy || working} onSaved={onSaved} />
-    <section className="card settings-card"><div className="card-heading"><div><h2>Clock-in kiosk</h2><p>Make this browser your shared attendance station.</p></div><Monitor size={23} /></div>
+    <section className="card settings-card"><div className="card-heading"><div><h2>Attendance kiosk</h2><p>Make this browser your shared attendance station.</p></div><Monitor size={23} /></div>
       <div className="sample-summary"><span>Active employees ready for the kiosk</span><strong>{ready}</strong></div>
-      <p className="settings-copy">Staff choose their name, scan their face or enter their PIN, and clock in. The server records the current time in MySQL. The kiosk stays connected for 30 days and remembers this workspace in this browser.</p>
+      <p className="settings-copy">Staff choose Clock in or Clock out, select their name, then verify with their face or PIN. The server records the current time in MySQL. The kiosk stays connected for 30 days and remembers this workspace in this browser.</p>
       <div className="info-note compact"><ShieldCheck size={19} /><p>Starting the kiosk signs you out of the administrator screens in this browser. Sign in again to manage staff or return to your dashboard.</p></div>
       <button className="button primary" disabled={busy || working || !ready} onClick={() => station('start')}>{working ? <LoaderCircle size={18} className="spin" /> : <Monitor size={18} />}Start kiosk & sign out</button>
-      <p className="settings-copy">Clock-in only. Repeat submissions for the same workday show the saved clock-in. Clock-out can still be entered by the administrator.</p>
+      <p className="settings-copy">Clock out completes an open clock-in for the same workday. Repeat submissions show the saved record. Ask an administrator to correct a missing clock-in.</p>
       <div className="kiosk-admin-actions"><button className="button danger-outline" disabled={busy || working} onClick={() => revoke ? station('revoke') : setRevoke(true)}><Trash2 size={16} />{revoke ? 'Confirm disconnect all kiosks' : 'Disconnect all kiosks'}</button>{revoke && <button className="text-button" onClick={() => setRevoke(false)}>Cancel</button>}</div>
     </section>
     {(error || message) && <div className={error ? 'auth-error' : 'info-note'} role={error ? 'alert' : 'status'}>{error || message}</div>}

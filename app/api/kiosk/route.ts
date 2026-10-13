@@ -5,8 +5,8 @@ import { getKioskSession } from '@/lib/kiosk-session';
 import { hashToken, validPin, verifyPin } from '@/lib/password.mjs';
 import { allowedOrigin, readJSON, RequestError } from '@/lib/request';
 import { faceAvailable } from '@/lib/face-engine.mjs';
-import { saveKioskClockIn } from '@/lib/kiosk-punch';
-import { kioskWorkday, attemptWindow } from '@/lib/kiosk-policy';
+import { saveKioskPunch } from '@/lib/kiosk-punch';
+import { kioskWorkday, kioskPunchKind, attemptWindow } from '@/lib/kiosk-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,6 +43,8 @@ export async function POST(request: Request) {
       return json({ error: 'Choose your name and enter your six-digit PIN.' }, 400);
     }
     const employeeId = body.employeeId, pin = body.pin;
+    const kind = kioskPunchKind(body.kind);
+    if (!kind) return json({ error: 'Choose Clock in or Clock out.' }, 400);
     return await getDb().transaction(async db => {
       // Match the administrator write lock: resets, revocation and simultaneous taps cannot race a punch.
       const [ws] = await db.select({ id: workspaces.ownerId }).from(workspaces).where(eq(workspaces.ownerId, session.ownerId)).limit(1).for('update');
@@ -74,11 +76,12 @@ export async function POST(request: Request) {
         return json({ error: 'The name or PIN is incorrect, or this employee is unavailable. Please try again or ask the administrator.' }, 401);
       }
       await db.update(kioskAttempts).set({ failures: 0, windowStart: now }).where(eq(kioskAttempts.key, userKey));
-      return json(await saveKioskClockIn(db, session.ownerId, employee, day, schedule, now, 'kiosk'));
+      const result = await saveKioskPunch(db, session.ownerId, employee, day, schedule, now, 'kiosk', kind);
+      return json(result.body, result.status);
     });
   } catch (error) {
     if (error instanceof RequestError) return json({ error: error.message }, error.status);
-    console.error('Kiosk clock-in failed', error instanceof Error ? error.name : 'server error');
-    return json({ error: 'Could not save the clock-in. Please retry; repeated submissions do not add another clock-in.' }, 500);
+    console.error('Kiosk attendance failed', error instanceof Error ? error.name : 'server error');
+    return json({ error: 'Could not save attendance. Please retry; repeated submissions do not add another record.' }, 500);
   }
 }
