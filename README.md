@@ -43,9 +43,21 @@ This version includes employees, schedules, manual IN/OUT punches, CSV imports, 
    Replace the example username and password with your real values **on your laptop**. Quotes keep spaces and `#` in a password intact. If MySQL runs on another computer, enter that server's address as `DB_HOST`. The account needs `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `INDEX` and `REFERENCES` permissions for the selected database during initial setup. It needs read/write permissions afterwards.
 
 5. Setup downloads dependencies and face-recognition models, checks the connection, generates a private `FACE_ENCRYPTION_KEY` in `.env`, creates or upgrades the attendance tables, asks you to create an administrator username and password, then builds the app. The administrator password must have at least 12 characters; it is different from your MySQL password. Existing administrators are retained on updates.
-6. Double-click **start-windows.cmd**. Keep its window open and visit **http://127.0.0.1:3000**. Sign in with the administrator account you just created. Closing the window stops the app; your MySQL records remain saved.
+6. Double-click **start-windows.cmd**. It starts the server and opens **http://127.0.0.1:3000** in your default browser when ready. Sign in with the administrator account you just created. Keep the server window open; closing it stops the app and your MySQL records remain saved.
 
-The default server listens only on your laptop. Future device integration may need a separate LAN gateway or authenticated endpoint, depending on the device. It is not set up for access from other computers yet.
+The default server listens only on your laptop. For local-network access, set `HADIR_BIND_HOST=0.0.0.0` in `.env`, allow the configured port through Windows Firewall for your private LAN, and restart. The other PC uses your attendance PC's IPv4 address and port in its browser. Webcam scanning from another PC requires HTTPS; PIN and ordinary pages can use LAN HTTP. Future device integration may need a separate gateway or authenticated endpoint, depending on the device.
+
+## Desktop application link
+
+After setup, double-click **create-desktop-shortcut.cmd** once inside `C:\Attendance-system`. It creates a **Hadir Attendance** icon on your Windows Desktop. It does not need administrator access.
+
+Double-click that desktop icon for daily use. It starts the server if needed, waits for the application to respond, and opens its link in your default browser. If Hadir is already running on the configured port, the launcher reuses it rather than starting a second server. Keep the original server window open while using the app. Run setup only for the first installation or after code updates; the desktop shortcut does not reinstall dependencies or modify database records.
+
+The launcher reads `PORT` from your private `.env`, including a custom port. If a different app or an older build is using that port, it displays a message. Stop the old server and rebuild after updating before starting the new launcher. If you move the project folder, run the shortcut creator again so its target points to the new location.
+
+**Hadir-Attendance.url** is a plain browser forwarder for `http://127.0.0.1:3000/`. Copy it to your Desktop when you want a link that opens an already-running server. For another PC, edit its `URL=` line in Notepad to the attendance server's actual LAN address or configured HTTPS domain, then save. A URL-only forwarder uses a running server; it does not start a server on the client PC.
+
+For LAN use with the desktop launcher, retain `HADIR_BIND_HOST=0.0.0.0` in the attendance PC's `.env`. The launcher still opens the local loopback address on that PC; other PCs use the server's LAN address. Domain/HTTPS hosting remains a separate configuration step.
 
 ## Where your files and records are stored
 
@@ -129,6 +141,7 @@ Run commands from `C:\Attendance-system`:
 | `npm run dev` | Development mode on the local address |
 | `npm run build` | Build after changing or updating the code |
 | `npm start` | Start the built app |
+| `npm run launch` | Start/reuse the local server and open the application link on Windows |
 | `npm test` | Attendance and security unit tests |
 | `npm run test:http` | Check browser origins against the built local server |
 | `npm run test:face-engine` | Load local face models and run the CPU detector on a test JPEG |
@@ -192,10 +205,13 @@ The PIN upgrade adds three tables; the face upgrade adds two more and extends th
 | `database/001-initial.sql` | Initial MySQL schema |
 | `scripts/setup.mjs`, `setup-windows.cmd` | First-run setup |
 | `start-windows.cmd` | Start the local server |
+| `scripts/launch.mjs`, `lib/launcher.mjs` | Start/reuse the server and open its browser link when ready |
+| `create-desktop-shortcut.cmd` | Create the Windows desktop application shortcut |
+| `Hadir-Attendance.url` | Browser-only forwarder to an already-running server |
 
 ## Verification and device integration
 
-GitHub Actions in `.github/workflows/ci.yml` runs the unit tests, actual CPU face-detector smoke test, TypeScript check and production build on Windows, plus controller/authentication integration tests against disposable MySQL 5.5.42 and 8.4 services. The database tests inject face-model results to verify encryption, consent, account isolation, event-bound challenge expiry/reuse, match/movement failures, limits, revocation, concurrent face/PIN clock-ins and clock-outs, missing-IN rejection, completion of imported sessions, and report updates. The independent engine test loads real packaged models and detects the absence of a face in a generated blank JPEG. These automated checks do not measure recognition accuracy or anti-spoofing performance with real staff. Check the Actions tab for the current result.
+GitHub Actions in `.github/workflows/ci.yml` runs the unit tests, Windows desktop shortcut creation, actual CPU face-detector smoke test, TypeScript check and production build on Windows, plus controller/authentication integration tests against disposable MySQL 5.5.42 and 8.4 services. Launcher checks cover custom ports, unavailable/occupied listeners, startup waits, the saved shortcut target and production-server reuse. The database tests inject face-model results to verify encryption, consent, account isolation, event-bound challenge expiry/reuse, match/movement failures, limits, revocation, concurrent face/PIN clock-ins and clock-outs, missing-IN rejection, completion of imported sessions, and report updates. The independent engine test loads real packaged models and detects the absence of a face in a generated blank JPEG. These automated checks do not measure recognition accuracy or anti-spoofing performance with real staff. Check the Actions tab for the current result.
 
 To run the MySQL suite manually, use a **new disposable database named `hadir_test_<name>`** with test connection environment variables, then run `npm run test:mysql`. The suite refuses a regular attendance database and leaves its test data there; it does not reset your real database.
 

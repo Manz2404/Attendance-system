@@ -5,6 +5,9 @@ import { existsSync } from 'node:fs';
 import { request } from 'node:http';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { probeApplication } from '../lib/launcher.mjs';
 
 const require = createRequire(import.meta.url);
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -67,6 +70,15 @@ test('production server accepts the browser Host without allowing other origins'
       await delay(200);
     }
     assert.ok(ready, `Production server did not become ready.\n${output}`);
+    await t.test('desktop launcher recognizes and reuses the running production server', async () => {
+      assert.equal(await probeApplication(address), 'ready');
+      const response = await fetch(`${address}/api/launcher-status`);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.deepEqual(await response.json(), { application: 'hadir-attendance' });
+      const result = await promisify(execFile)(process.execPath, ['scripts/launch.mjs', '--no-browser'], { env: { ...process.env, PORT: String(port), HADIR_BIND_HOST: '127.0.0.1' }, timeout: 10000 });
+      assert.match(result.stdout, /already running/); assert.match(result.stdout, new RegExp(`127\\.0\\.0\\.1:${port}`));
+      assert.equal(child.exitCode, null);
+    });
     for (const hostname of ['localhost', '127.0.0.1']) {
       await t.test(`same-origin browser POST works through ${hostname}`, async () => {
         const result = await signIn(`${hostname}:${port}`, `http://${hostname}:${port}`);

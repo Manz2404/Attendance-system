@@ -19,7 +19,8 @@ if errorlevel 1 goto failed
 call npm run build
 if errorlevel 1 goto failed
 echo.
-echo Ready. Double-click start-windows.cmd to open the attendance server.
+echo Ready. Double-click start-windows.cmd to start Attendance and open your browser.
+echo Optional: run create-desktop-shortcut.cmd once to add a Hadir Attendance desktop icon.
 pause
 exit /b 0
 :node_missing

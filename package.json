@@ -1,6 +1,6 @@
 {
   "name": "hadir-attendance",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,13 +10,14 @@
     "dev": "node scripts/serve.mjs dev",
     "build": "next build --webpack",
     "start": "node scripts/serve.mjs start",
+    "launch": "node scripts/launch.mjs",
     "setup": "node scripts/setup.mjs",
     "db:check": "node scripts/check-db.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "admin:create": "node scripts/admin.mjs",
     "admin:reset-password": "node scripts/admin.mjs --reset",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/attendance.test.mjs tests/security.test.mjs tests/database-version.test.mjs tests/kiosk.test.mjs tests/face.test.mjs",
+    "test": "node --experimental-strip-types --test tests/attendance.test.mjs tests/security.test.mjs tests/database-version.test.mjs tests/kiosk.test.mjs tests/face.test.mjs tests/launcher.test.mjs",
     "test:mysql": "node --experimental-strip-types --test tests/mysql.test.mjs",
     "test:http": "node --test tests/http.test.mjs",
     "test:face-engine": "node --test tests/face-engine.test.mjs"
