@@ -8,6 +8,7 @@ import { createServer } from 'node:net';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { probeApplication } from '../lib/launcher.mjs';
+import { runInNewContext } from 'node:vm';
 
 const require = createRequire(import.meta.url);
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -70,6 +71,18 @@ test('production server accepts the browser Host without allowing other origins'
       await delay(200);
     }
     assert.ok(ready, `Production server did not become ready.\n${output}`);
+    await t.test('production sign-in includes a standalone first-paint appearance bootstrap', async () => {
+      const response = await fetch(`${address}/login`);
+      assert.equal(response.status, 200);
+      const markup = await response.text();
+      const script = markup.match(/<script[^>]*id="hadir-appearance-bootstrap"[^>]*>([\s\S]*?)<\/script>/)?.[1];
+      assert.ok(script, 'The appearance script must run before the page is displayed.');
+      const values = {}, root = { dataset: {}, style: { setProperty: (key, value) => { values[key] = value; } } };
+      const saved = JSON.stringify({ version: 1, mode: 'dark', theme: 'midnight', accent: '#e11d48', colors: { dark: { background: '#000000', foreground: '#ededed' } } });
+      runInNewContext(script, { window: { matchMedia: () => ({ matches: false }), localStorage: { getItem: key => key === 'hadir-appearance' ? saved : null } }, document: { documentElement: root } }, { timeout: 2000 });
+      assert.equal(root.dataset.theme, 'dark'); assert.equal(root.dataset.appearance, 'midnight');
+      assert.equal(values['--surface'], '#000000'); assert.equal(values['--ink'], '#ededed'); assert.equal(values['--appearance-accent'], '#e11d48');
+    });
     await t.test('desktop launcher recognizes and reuses the running production server', async () => {
       assert.equal(await probeApplication(address), 'ready');
       const response = await fetch(`${address}/api/launcher-status`);

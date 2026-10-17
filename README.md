@@ -59,6 +59,18 @@ The launcher reads `PORT` from your private `.env`, including a custom port. If 
 
 For LAN use with the desktop launcher, retain `HADIR_BIND_HOST=0.0.0.0` in the attendance PC's `.env`. The launcher still opens the local loopback address on that PC; other PCs use the server's LAN address. Domain/HTTPS hosting remains a separate configuration step.
 
+## Appearance settings
+
+Version **0.5.0** adds **Settings → Appearance**, styled with mode previews and color controls. After updating your application files, keep your existing `.env`, stop the old server, and run `setup-windows.cmd` once to rebuild. Start the app normally afterwards. No database migration is needed for appearance preferences.
+
+- **Mode:** follow your device with System, or choose Light or Dark. System mode follows operating-system appearance changes while the app is open. The existing header toggle still switches between light and dark without losing your accent or custom colors.
+- **Theme:** choose Hadir, Midnight, or Sand. Selecting a theme applies its coordinated palette and accent and clears custom background/text overrides for both modes.
+- **Accent:** choose one of eight colors or use the color picker for any custom color. Buttons, links, focus indicators, and selected items update immediately. Attendance status colors keep their meaning.
+- **Background / Foreground:** preview a background and text color using the picker or a six-digit hex value. Click **Apply colors** to use the pair. Light and dark modes keep separate custom pairs. Apply is available when text contrast is at least 4.5:1; button text also adjusts for its accent color.
+- **Reset colors:** restore the current mode's theme colors. **Reset appearance:** return all appearance preferences to Hadir, green accent, and System mode.
+
+Preferences are saved **in the current browser**, apply to administrator, sign-in, and kiosk screens, and synchronize with other tabs on the same app address. Other computers, browser profiles, and addresses have their own preferences. Existing light/dark choices are retained on upgrade. If browser storage is unavailable, changes work for the current visit.
+
 ## Where your files and records are stored
 
 | Item | Location |
@@ -193,6 +205,8 @@ The PIN upgrade adds three tables; the face upgrade adds two more and extends th
 | `app/api/workspace/route.ts` | Attendance controller: authenticated reads and writes |
 | `app/api/auth/login/route.ts` | Local sign-in and failed attempt limit |
 | `lib/auth.ts` | Hashed database sessions and logout |
+| `app/appearance-settings.tsx`, `app/appearance-provider.tsx` | Appearance controls and browser preference synchronization |
+| `lib/appearance.ts` | Shared color policy, contrast checks, and first-paint theme bootstrap |
 | `app/kiosk/`, `app/kiosk-settings.tsx` | Shared clock-in/out screen and administrator PIN setup |
 | `app/api/kiosk/` | Restricted attendance and kiosk session endpoints |
 | `app/camera-capture.tsx`, `app/face-settings.tsx` | Camera capture and administrator face enrollment |
@@ -210,6 +224,8 @@ The PIN upgrade adds three tables; the face upgrade adds two more and extends th
 | `Hadir-Attendance.url` | Browser-only forwarder to an already-running server |
 
 ## Verification and device integration
+
+Appearance tests cover all preset/accent combinations in light and dark mode, custom-color validation, legacy choices, System mode resolution, and startup with unavailable or damaged browser storage. The production HTTP suite also executes the actual rendered first-paint script to verify it remains standalone after the Windows build.
 
 GitHub Actions in `.github/workflows/ci.yml` runs the unit tests, Windows desktop shortcut creation, actual CPU face-detector smoke test, TypeScript check and production build on Windows, plus controller/authentication integration tests against disposable MySQL 5.5.42 and 8.4 services. Launcher checks cover custom ports, unavailable/occupied listeners, startup waits, the saved shortcut target and production-server reuse. The database tests inject face-model results to verify encryption, consent, account isolation, event-bound challenge expiry/reuse, match/movement failures, limits, revocation, concurrent face/PIN clock-ins and clock-outs, missing-IN rejection, completion of imported sessions, and report updates. The independent engine test loads real packaged models and detects the absence of a face in a generated blank JPEG. These automated checks do not measure recognition accuracy or anti-spoofing performance with real staff. Check the Actions tab for the current result.
 

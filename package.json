@@ -1,6 +1,6 @@
 {
   "name": "hadir-attendance",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -17,7 +17,7 @@
     "admin:create": "node scripts/admin.mjs",
     "admin:reset-password": "node scripts/admin.mjs --reset",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/attendance.test.mjs tests/security.test.mjs tests/database-version.test.mjs tests/kiosk.test.mjs tests/face.test.mjs tests/launcher.test.mjs",
+    "test": "node --experimental-strip-types --test tests/attendance.test.mjs tests/security.test.mjs tests/database-version.test.mjs tests/kiosk.test.mjs tests/face.test.mjs tests/launcher.test.mjs tests/appearance.test.mjs",
     "test:mysql": "node --experimental-strip-types --test tests/mysql.test.mjs",
     "test:http": "node --test tests/http.test.mjs",
     "test:face-engine": "node --test tests/face-engine.test.mjs"

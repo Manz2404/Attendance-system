@@ -1,29 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
+import { useAppearance } from './appearance-provider';
 
 export default function ThemeToggle() {
-  const [dark, setDark] = useState(false);
-  useEffect(() => {
-    const sync = () => setDark(document.documentElement.dataset.theme === 'dark');
-    sync();
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== 'hadir-theme') return;
-      document.documentElement.dataset.theme = event.newValue === 'dark' || event.newValue === 'light'
-        ? event.newValue : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      sync();
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  const { settings, appearance, ready, update } = useAppearance();
+  const dark = appearance.mode === 'dark';
   function toggle() {
-    const next = !dark;
-    document.documentElement.dataset.theme = next ? 'dark' : 'light';
-    setDark(next);
-    try { localStorage.setItem('hadir-theme', next ? 'dark' : 'light'); } catch { /* Theme still works when storage is disabled. */ }
+    update({ ...settings, mode: dark ? 'light' : 'dark' });
   }
-  return <button type="button" className="theme-toggle" onClick={toggle}
+  return <button type="button" className="theme-toggle" onClick={toggle} disabled={!ready}
     aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} aria-pressed={dark}
     title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
     {dark ? <Sun size={17} /> : <Moon size={17} />}<span className="theme-toggle-label">{dark ? 'Light mode' : 'Dark mode'}</span>
