@@ -51,7 +51,7 @@ Use these service deployment settings:
 | Build command | `npm run build` |
 | Pre-deploy command | `npm run db:migrate` |
 | Start command | `npm run start:cloud` |
-| Healthcheck path | `/api/launcher-status` |
+| Healthcheck path | `/login` |
 | Restart policy | On failure |
 
 The existing migrations run against the chosen database, preserve applied migration checksums, and stop a deployment if setup fails. The healthcheck verifies that the web server is responding; it is not a database-backup or ongoing database-health check.
