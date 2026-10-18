@@ -9,6 +9,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { probeApplication } from '../lib/launcher.mjs';
 import { runInNewContext } from 'node:vm';
+import { serverOptions } from '../lib/server-options.mjs';
 
 const require = createRequire(import.meta.url);
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -27,9 +28,10 @@ async function availablePort() {
 test('production server accepts the browser Host without allowing other origins', { timeout: 90000 }, async t => {
   if (!existsSync('.next/BUILD_ID')) throw new Error('Run npm run build before test:http.');
   const port = await availablePort(), address = `http://127.0.0.1:${port}`;
-  // Start the actual Next server with the same loopback binding as serve.mjs.
-  const child = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'start', '--hostname', '127.0.0.1', '--port', String(port)], {
-    env: { ...process.env, NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1' },
+  // Exercise the same options as serve.mjs; Linux CI also checks the cloud listener.
+  const config = serverOptions({ ...process.env, PORT: String(port), HADIR_BIND_HOST: '127.0.0.1', FACE_ENCRYPTION_KEY: '1'.repeat(64), NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1' }, process.env.TEST_CLOUD === 'true' ? 'cloud' : 'start');
+  const child = spawn(process.execPath, [require.resolve('next/dist/bin/next'), config.mode, '--hostname', config.host, '--port', String(config.port)], {
+    env: config.env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '', startError;
@@ -37,13 +39,13 @@ test('production server accepts the browser Host without allowing other origins'
   child.stdout.on('data', record); child.stderr.on('data', record);
   child.on('error', error => { startError = error; });
   const stopped = new Promise(resolve => child.once('close', resolve));
-  const signIn = (host, origin) => new Promise((resolve, reject) => {
+  const signIn = (host, origin, extraHeaders = {}) => new Promise((resolve, reject) => {
     // Invalid credentials reach validation without reading or changing any database.
     const body = JSON.stringify({ username: 'ab', password: 'http-regression-probe' });
     // fetch overrides a supplied Host with its connection address. Native HTTP
     // keeps the browser Host while connecting directly to the IPv4 listener.
     const req = request(`${address}/api/auth/login`, {
-      method: 'POST', headers: { host, origin, 'Content-Type': 'application/json' },
+      method: 'POST', headers: { host, origin, 'Content-Type': 'application/json', ...extraHeaders },
     }, response => {
       let text = '';
       response.setEncoding('utf8');
@@ -71,6 +73,14 @@ test('production server accepts the browser Host without allowing other origins'
       await delay(200);
     }
     assert.ok(ready, `Production server did not become ready.\n${output}`);
+    if (config.cloud) await t.test('HTTPS browser requests work behind the cloud TLS proxy', async () => {
+      const host = 'app.hadirattendance.my.id';
+      const sameOrigin = await signIn(host, `https://${host}`, { 'x-forwarded-proto': 'https' });
+      assert.equal(sameOrigin.status, 400, JSON.stringify(sameOrigin));
+      assert.equal(sameOrigin.data.error, 'Enter a valid username and password.');
+      const differentScheme = await signIn(host, `http://${host}`, { 'x-forwarded-proto': 'https' });
+      assert.equal(differentScheme.status, 403, JSON.stringify(differentScheme));
+    });
     await t.test('production sign-in includes a standalone first-paint appearance bootstrap', async () => {
       const response = await fetch(`${address}/login`);
       assert.equal(response.status, 200);

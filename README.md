@@ -47,6 +47,10 @@ This version includes employees, schedules, manual IN/OUT punches, CSV imports, 
 
 The default server listens only on your laptop. For local-network access, set `HADIR_BIND_HOST=0.0.0.0` in `.env`, allow the configured port through Windows Firewall for your private LAN, and restart. The other PC uses your attendance PC's IPv4 address and port in its browser. Webcam scanning from another PC requires HTTPS; PIN and ordinary pages can use LAN HTTP. Future device integration may need a separate gateway or authenticated endpoint, depending on the device.
 
+## Cloud hosting
+
+Cloud startup is available with `npm run start:cloud`: it uses the host-assigned port, binds to `0.0.0.0`, enforces HTTPS-only cookies, and requires a stable face-enrollment key. See [CLOUD-DEPLOY.md](CLOUD-DEPLOY.md) for Railway, a cloud MySQL database, migration of existing records, and connecting `hadirattendance.my.id`. Normal Windows startup continues to use the configured local/LAN binding.
+
 ## Desktop application link
 
 After setup, double-click **create-desktop-shortcut.cmd** once inside `C:\Attendance-system`. It creates a **Hadir Attendance** icon on your Windows Desktop. It does not need administrator access.
@@ -224,6 +228,8 @@ The PIN upgrade adds three tables; the face upgrade adds two more and extends th
 | `Hadir-Attendance.url` | Browser-only forwarder to an already-running server |
 
 ## Verification and device integration
+
+The `linux-cloud` workflow job verifies the production build, actual CPU face engine, and production HTTP behavior using the cloud listener on Linux. Startup policy tests verify host-assigned ports, HTTPS-only cookies, key validation, and local/LAN compatibility.
 
 Appearance tests cover all preset/accent combinations in light and dark mode, custom-color validation, legacy choices, System mode resolution, and startup with unavailable or damaged browser storage. The production HTTP suite also executes the actual rendered first-paint script to verify it remains standalone after the Windows build.
 

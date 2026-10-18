@@ -7,6 +7,25 @@ on:
 permissions:
   contents: read
 jobs:
+  cloud:
+    name: linux-cloud
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - run: npm run test:face-engine
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - run: npm run test:http
+        env:
+          TEST_CLOUD: 'true'
   windows:
     runs-on: windows-latest
     timeout-minutes: 15
