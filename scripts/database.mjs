@@ -6,8 +6,7 @@ export function loadLocalEnvironment() {
   const file = resolve(process.cwd(), '.env');
   if (existsSync(file)) loadEnvFile(file);
 }
-export function databaseOptions() {
-  const env = process.env;
+export function databaseOptions(env = process.env) {
   if (!env.DB_HOST || !env.DB_USER || !env.DB_NAME || env.DB_USER === 'your_mysql_user') throw new Error('Edit DB_HOST, DB_USER, DB_PASSWORD and DB_NAME in .env using your SQLyog connection details.');
   const port = Number(env.DB_PORT || 3306);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('DB_PORT must be a valid port number.');

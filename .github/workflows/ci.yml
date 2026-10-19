@@ -7,6 +7,16 @@ on:
 permissions:
   contents: read
 jobs:
+  render-laptop:
+    name: render-laptop-container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the actual Render image
+        run: docker build --file Dockerfile.render-laptop --tag hadir-render-laptop:test .
+      - name: Check the real userspace daemon without credentials or a TUN device
+        run: docker run --rm --volume "$PWD/tests:/tests:ro" --entrypoint node hadir-render-laptop:test --test /tests/tailscale-image.test.mjs
   cloud:
     name: linux-cloud
     runs-on: ubuntu-latest

@@ -1,5 +1,7 @@
 # Host Hadir Attendance on Railway
 
+For **Render using the existing database on your Windows laptop**, use [RENDER-LAPTOP.md](RENDER-LAPTOP.md) instead. It keeps your records on the laptop and uses a private Tailscale tunnel. The Railway database migration steps below apply only when moving the database to cloud hosting.
+
 Run the Next.js app and a persistent MySQL database in the cloud. Staff then use the HTTPS website, including the webcam kiosk, while your Windows laptop can be switched off. A domain supplies the name; Railway supplies the running application and database.
 
 The repository is `Manz2404/Attendance-system`, branch `main`. Cloud startup is `npm run start:cloud`; Windows users keep using their normal launcher.

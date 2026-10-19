@@ -49,6 +49,8 @@ The default server listens only on your laptop. For local-network access, set `H
 
 ## Cloud hosting
 
+To run the website on **Render while keeping the current MySQL database on your Windows laptop**, follow [RENDER-LAPTOP.md](RENDER-LAPTOP.md). Version **0.5.3** includes `connect-render-database.cmd` and a Docker startup that connects through private Tailscale networking and checks MySQL before serving the app. The laptop and MySQL must remain online.
+
 Cloud startup is available with `npm run start:cloud`: it uses the host-assigned port, binds to `0.0.0.0`, enforces HTTPS-only cookies, and requires a stable face-enrollment key. See [CLOUD-DEPLOY.md](CLOUD-DEPLOY.md) for Railway, a cloud MySQL database, migration of existing records, and connecting `hadirattendance.my.id`. Normal Windows startup continues to use the configured local/LAN binding.
 
 ## Desktop application link

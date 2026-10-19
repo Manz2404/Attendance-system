@@ -1,6 +1,6 @@
 {
   "name": "hadir-attendance",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "type": "module",
   "engines": {
@@ -17,11 +17,13 @@
     "admin:create": "node scripts/admin.mjs",
     "admin:reset-password": "node scripts/admin.mjs --reset",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/attendance.test.mjs tests/security.test.mjs tests/database-version.test.mjs tests/kiosk.test.mjs tests/face.test.mjs tests/launcher.test.mjs tests/appearance.test.mjs tests/server-options.test.mjs",
+    "test": "node --experimental-strip-types --test tests/attendance.test.mjs tests/security.test.mjs tests/database-version.test.mjs tests/kiosk.test.mjs tests/face.test.mjs tests/launcher.test.mjs tests/appearance.test.mjs tests/server-options.test.mjs tests/tailscale-tunnel.test.mjs",
     "test:mysql": "node --experimental-strip-types --test tests/mysql.test.mjs",
     "test:http": "node --test tests/http.test.mjs",
     "test:face-engine": "node --test tests/face-engine.test.mjs",
-    "start:cloud": "node scripts/serve.mjs cloud"
+    "start:cloud": "node scripts/serve.mjs cloud",
+    "start:render-laptop": "node scripts/render-laptop.mjs",
+    "db:share-render": "node scripts/share-render-database.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
