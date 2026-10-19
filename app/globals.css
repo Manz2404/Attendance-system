@@ -90,3 +90,25 @@
 .appearance-save-note.save-unavailable{color:var(--amber)}
 @media(max-width:720px){.appearance-settings{padding:22px}.appearance-heading{align-items:flex-start;flex-wrap:wrap}.appearance-mode-row{align-items:flex-start;flex-direction:column;padding:18px}.appearance-modes{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;max-width:370px}.appearance-controls{padding:0 17px}.appearance-row-label>span{max-width:200px}.appearance-color-actions{align-items:flex-start;flex-direction:column;gap:12px}.appearance-color-actions>div{align-self:flex-end}.appearance-live-preview{padding:18px}}
 @media(max-width:480px){.appearance-settings{padding:18px}.appearance-heading h2{font-size:22px}.appearance-row{flex-wrap:wrap;gap:12px;min-height:83px}.appearance-row-label{flex:1;min-width:95px}.appearance-row-label>span{font-size:10px}.appearance-row select{min-width:120px;max-width:145px}.appearance-color-choice{gap:6px}.appearance-color-choice select{min-width:110px;width:112px}.appearance-live-preview{align-items:flex-start;flex-direction:column;gap:15px}.appearance-preview-action{align-self:flex-start}}
+/* Login account creation shares the sign-in theme and stays usable on phones. */
+.auth-link{color:var(--green);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.account-card{max-width:580px}
+.account-notice{display:flex;align-items:flex-start;gap:10px;padding:13px 14px;margin:0 0 22px;border:1px solid var(--line);border-radius:10px;background:var(--soft-green);color:var(--ink);font-size:12px;line-height:1.7}
+.account-notice>svg{flex-shrink:0;margin-top:2px;color:var(--green)}
+.account-fields{display:grid;gap:18px;border:0;padding:0;margin:0;min-width:0}
+.account-fields:disabled{opacity:.6}
+.account-fields small,.account-hint{color:var(--muted);font-size:11px;line-height:1.6;font-weight:400}
+.account-fields small{margin-top:1px}
+.account-passwords{display:grid;grid-template-columns:1fr 1fr;gap:14px;min-width:0}
+.account-passwords label{min-width:0}
+.account-hint{margin-top:-10px}
+.account-authorization{padding-top:18px;border-top:1px solid var(--line)}
+.account-back{display:inline-flex;align-items:center;gap:6px;margin-top:20px;font-size:12px}
+.account-success{display:grid;gap:16px;font-size:13px;line-height:1.8}
+.account-success>svg{color:var(--green)}
+.account-success h2{font-size:23px;letter-spacing:-.5px;font-weight:650}
+.account-success p{color:var(--muted)}
+.account-success p strong{color:var(--ink)}
+.account-success .button{margin-top:8px}
+.account-actions{display:flex;gap:10px;flex-wrap:wrap}
+@media(max-width:520px){.account-passwords{grid-template-columns:1fr}.account-card{padding:28px 23px}.account-notice{font-size:11px}}

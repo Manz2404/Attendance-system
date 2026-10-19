@@ -1,8 +1,8 @@
 'use client';
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, AlertCircle } from 'lucide-react';
-export default function LoginForm() {
-  const [error, setError] = useState(''), [busy, setBusy] = useState(false);
+export default function LoginForm({ initialError = '' }: { initialError?: string }) {
+  const [error, setError] = useState(initialError), [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
     const data = new FormData(event.currentTarget);

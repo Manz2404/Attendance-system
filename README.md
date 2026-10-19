@@ -63,6 +63,22 @@ The launcher reads `PORT` from your private `.env`, including a custom port. If 
 
 For LAN use with the desktop launcher, retain `HADIR_BIND_HOST=0.0.0.0` in the attendance PC's `.env`. The launcher still opens the local loopback address on that PC; other PCs use the server's LAN address. Domain/HTTPS hosting remains a separate configuration step.
 
+## Create login accounts in the browser
+
+Version **0.5.2** adds **Create an account** on the sign-in page and **Settings → Account & access → Add user**. Enter the new user's display name, username, password (12–256 characters), and password confirmation. A signed-in administrator confirms their current password before creating another account; five failed confirmations pause account creation for 15 minutes without blocking normal sign-in. The administrator stays signed in after creating the new user.
+
+Each login owns a **separate workspace**. A new account starts empty; your existing employees, attendance, PINs, and faces remain under the original account. Staff clocking in/out are added through **Employees**, rather than by creating another administrator login. Shared workspace roles are not part of this update.
+
+To create an account from the sign-in screen before you have an administrator session, the server operator must first set a private `ACCOUNT_CREATION_KEY` in the hosting service's environment variables or local `.env`. Generate a separate random code on your own computer:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Copy this code directly into `ACCOUNT_CREATION_KEY` in Render's **Environment** tab, save and deploy, then open `/register` and enter it in **Account creation code**. Keep the code out of GitHub and chat, and do not reuse `FACE_ENCRYPTION_KEY`. You can remove `ACCOUNT_CREATION_KEY` after creating the required accounts; signed-in administrators can still use **Add user**. Without this variable, anonymous account creation is disabled.
+
+Account creation uses the existing MySQL tables and password hashing. **No database migration is needed for this update.** MySQL must be reachable and its earlier migrations must already have been applied. A browser form does not connect Render to a Windows laptop automatically: keep MySQL and the configured private connection online, and verify the Render `DB_*` settings. Connection and missing-table errors now explain the database issue instead of instructing cloud users to run a Windows launcher. Command-line administrator setup and password reset remain available.
+
 ## Appearance settings
 
 Version **0.5.0** adds **Settings → Appearance**, styled with mode previews and color controls. After updating your application files, keep your existing `.env`, stop the old server, and run `setup-windows.cmd` once to rebuild. Start the app normally afterwards. No database migration is needed for appearance preferences.

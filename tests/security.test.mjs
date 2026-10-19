@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { hashPassword, verifyPassword, hashToken, validUsername, validPassword } from '../lib/password.mjs';
 import { allowedOrigin, readJSON, RequestError } from '../lib/request.ts';
 import { databaseOptions } from '../scripts/database.mjs';
+import { accountDetails, AccountInputError, accountCreationEnabled, validCreationKey } from '../lib/account-creation.mjs';
+import { databaseErrorCode, databaseFailure } from '../lib/database-error.mjs';
 
 test('password hashes use separate salts and never contain the password', async () => {
   const password = 'a long local password!';
@@ -21,6 +23,31 @@ test('usernames and administrator passwords have useful limits', () => {
 test('session hashes cannot expose raw bearer tokens', () => {
   const token = 'a'.repeat(64);
   assert.match(hashToken(token), /^[a-f0-9]{64}$/); assert.notEqual(hashToken(token), token);
+});
+test('browser account creation validates identity, strong passwords and confirmation', () => {
+  const body = { username: '  Arman.New  ', name: '  New Admin 🧑‍💻  ', password: 'new account password!', confirmPassword: 'new account password!' };
+  assert.deepEqual(accountDetails(body), { username: 'arman.new', name: 'New Admin 🧑‍💻', password: body.password });
+  for (const change of [{ username: '../admin' }, { name: '  ' }, { name: 'x'.repeat(121) }, { password: 'short', confirmPassword: 'short' }, { password: 'x'.repeat(257) }, { confirmPassword: 'different password!' }]) {
+    assert.throws(() => accountDetails({ ...body, ...change }), AccountInputError);
+  }
+});
+test('anonymous account creation is disabled without a suitable separate code', () => {
+  for (const key of [undefined, '', 'short', 'a'.repeat(31), 'a'.repeat(257), 'a b'.repeat(20)]) {
+    assert.equal(accountCreationEnabled(key), false); assert.equal(validCreationKey('anything', key), false);
+  }
+  const code = 'a'.repeat(64);
+  assert.equal(accountCreationEnabled(code), true); assert.equal(validCreationKey(code, code), true);
+  for (const candidate of [undefined, null, 42, 'b'.repeat(64), code + ' ', 'a'.repeat(257)]) assert.equal(validCreationKey(candidate, code), false);
+});
+test('database errors explain failed connections and missing setup without exposing credentials', () => {
+  const error = { message: 'private-host secret-password secret-sql', cause: { code: 'ECONNREFUSED', message: 'another secret' } };
+  assert.equal(databaseErrorCode(error), 'ECONNREFUSED');
+  const failure = databaseFailure(error);
+  assert.equal(failure.errorCode, 'DATABASE_UNAVAILABLE'); assert.match(failure.error, /private connection/);
+  assert.doesNotMatch(JSON.stringify(failure), /secret-password|private-host|secret-sql|setup-windows/);
+  assert.equal(databaseFailure({ cause: { code: 'ER_NO_SUCH_TABLE' } }).errorCode, 'DATABASE_SETUP_REQUIRED');
+  assert.equal(databaseFailure({ code: 'ER_ACCESS_DENIED_ERROR' }).errorCode, 'DATABASE_ACCESS_DENIED');
+  assert.equal(databaseErrorCode(null), 'DATABASE_ERROR');
 });
 test('browser writes reject a different origin, including a different port', () => {
   for (const origin of ['http://evil.example', 'http://127.0.0.1:4000', 'null']) assert.equal(allowedOrigin(new Request('http://127.0.0.1:3000/api', { headers: { origin } })), false);

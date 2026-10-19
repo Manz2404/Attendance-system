@@ -10,7 +10,7 @@ import { databaseOptions, loadLocalEnvironment } from '../scripts/database.mjs';
 import { migrate } from '../scripts/migrate.mjs';
 import { checkDatabase } from '../scripts/check-db.mjs';
 import { createAdmin } from '../scripts/admin.mjs';
-import { hashToken } from '../lib/password.mjs';
+import { hashToken, verifyPassword } from '../lib/password.mjs';
 import { openFace, FACE_MODEL, faceChallengeHash } from '../lib/face-policy.mjs';
 import { dateMY, addDays, localInstant, summarizeDay } from '../lib/attendance.ts';
 
@@ -22,7 +22,10 @@ test('MySQL migrations, controller transactions and local authentication', async
   const routePath = resolve(runtime, 'workspace.mjs'), loginPath = resolve(runtime, 'login.mjs'), authPath = resolve(runtime, 'auth.mjs');
   const kioskPath = resolve(runtime, 'kiosk.mjs'), kioskAdminPath = resolve(runtime, 'kiosk-admin.mjs');
   const facePath = resolve(runtime, 'face.mjs'), enrollmentPath = resolve(runtime, 'face-enrollment.mjs');
+  const registerPath = resolve(runtime, 'register.mjs');
   const previousFaceKey = process.env.FACE_ENCRYPTION_KEY;
+  const previousCreationKey = process.env.ACCOUNT_CREATION_KEY;
+  const creationKey = 'c'.repeat(64);
   process.env.FACE_ENCRYPTION_KEY = '1'.repeat(64);
   const authMock = { name: 'mock-account', setup(builder) {
     builder.onResolve({ filter: /^@\/lib\/auth$/ }, () => ({ path: 'mock-auth', namespace: 'auth-test' }));
@@ -40,12 +43,14 @@ test('MySQL migrations, controller transactions and local authentication', async
   const shared = { bundle: true, platform: 'node', format: 'esm', packages: 'external', tsconfig: 'tsconfig.json' };
   await build({ ...shared, entryPoints: ['app/api/workspace/route.ts'], outfile: routePath, plugins: [authMock] });
   await build({ ...shared, entryPoints: ['app/api/auth/login/route.ts'], outfile: loginPath, plugins: [authMock] });
+  await build({ ...shared, entryPoints: ['app/api/auth/register/route.ts'], outfile: registerPath, plugins: [authMock] });
   await build({ ...shared, entryPoints: ['lib/auth.ts'], outfile: authPath, plugins: [cookiesMock] });
   await build({ ...shared, entryPoints: ['app/api/kiosk/route.ts'], outfile: kioskPath, plugins: [cookiesMock, faceMock] });
   await build({ ...shared, entryPoints: ['app/api/kiosk/admin/route.ts'], outfile: kioskAdminPath, plugins: [cookiesMock, authMock] });
   await build({ ...shared, entryPoints: ['app/api/kiosk/face/route.ts'], outfile: facePath, plugins: [cookiesMock, faceMock] });
   await build({ ...shared, entryPoints: ['app/api/kiosk/face-enrollment/route.ts'], outfile: enrollmentPath, plugins: [authMock, faceMock] });
   const route = await import(pathToFileURL(routePath)), login = await import(pathToFileURL(loginPath)), auth = await import(pathToFileURL(authPath));
+  const register = await import(pathToFileURL(registerPath));
   const kiosk = await import(pathToFileURL(kioskPath)), kioskAdmin = await import(pathToFileURL(kioskAdminPath));
   const face = await import(pathToFileURL(facePath)), enrollment = await import(pathToFileURL(enrollmentPath));
   const connection = await mysql.createConnection(databaseOptions());
@@ -56,6 +61,11 @@ test('MySQL migrations, controller transactions and local authentication', async
   const get = async () => { const response = await route.GET(); return { status: response.status, data: await response.json() }; };
   const signIn = async (username, password, headers = {}) => {
     const response = await login.POST(new Request('http://127.0.0.1:3000/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ username, password }) }));
+    return { status: response.status, data: await response.json() };
+  };
+  const newAccount = { username: 'web-created', name: 'Web Created Admin 🧑‍💻', password: 'browser-created-password!', confirmPassword: 'browser-created-password!' };
+  const createAccount = async (body = newAccount, headers = {}) => {
+    const response = await register.POST(new Request('http://127.0.0.1:3000/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }));
     return { status: response.status, data: await response.json() };
   };
   let owner, second, schedule, employee;
@@ -84,6 +94,43 @@ test('MySQL migrations, controller transactions and local authentication', async
       owner = accounts.find(a => a.username === 'integration').id; second = accounts.find(a => a.username === 'second').id;
       assert.ok(accounts.every(a => a.password_hash.startsWith('scrypt-v1$') && a.password_hash !== password));
       await assert.rejects(createAdmin(connection, { username: 'integration', name: 'Changed', password }), /already exists/);
+    });
+    await t.test('anonymous browser creation is disabled by default and requires the private creation code', async () => {
+      globalThis.__authUser = null;
+      delete process.env.ACCOUNT_CREATION_KEY;
+      const count = (await connection.query('SELECT COUNT(*) AS n FROM hadir_users'))[0][0].n;
+      assert.equal((await createAccount()).status, 403);
+      process.env.ACCOUNT_CREATION_KEY = creationKey;
+      assert.equal((await createAccount()).status, 403);
+      assert.equal((await createAccount({ ...newAccount, creationKey: 'wrong-code' })).status, 403);
+      assert.equal((await createAccount({ ...newAccount, creationKey }, { origin: 'https://evil.example' })).status, 403);
+      assert.equal((await createAccount({ ...newAccount, creationKey, password: 'short', confirmPassword: 'short' })).status, 400);
+      assert.equal((await createAccount({ ...newAccount, creationKey, confirmPassword: 'different-password!' })).status, 400);
+      assert.equal((await createAccount({ ...newAccount, creationKey, padding: 'x'.repeat(4097) })).status, 413);
+      assert.equal((await createAccount({ ...newAccount, creationKey }, { 'Content-Type': 'text/plain' })).status, 415);
+      assert.equal((await connection.query('SELECT COUNT(*) AS n FROM hadir_users'))[0][0].n, count);
+    });
+    await t.test('a browser-created account uses the shared password format and can sign in without exposing credentials', async () => {
+      delete globalThis.__createdSession;
+      const result = await createAccount({ ...newAccount, creationKey, username: '  Web-Created  ' });
+      assert.equal(result.status, 201, JSON.stringify(result)); assert.equal(result.data.username, 'web-created');
+      assert.equal(globalThis.__createdSession, undefined);
+      assert.doesNotMatch(JSON.stringify(result), new RegExp(creationKey));
+      assert.equal(result.data.password, undefined); assert.equal(result.data.passwordHash, undefined);
+      const [[row]] = await connection.execute('SELECT id, name, password_hash FROM hadir_users WHERE username = ?', ['web-created']);
+      assert.equal(row.name, newAccount.name); assert.ok(row.password_hash.startsWith('scrypt-v1$'));
+      assert.equal(await verifyPassword(newAccount.password, row.password_hash), true);
+      assert.equal((await signIn('web-created', newAccount.password)).status, 200);
+      assert.equal(globalThis.__createdSession, row.id);
+      assert.equal((await createAccount({ ...newAccount, creationKey, password: 'do-not-overwrite-password!', confirmPassword: 'do-not-overwrite-password!' })).status, 409);
+      assert.equal((await signIn('web-created', newAccount.password)).status, 200);
+      const passwords = ['first-concurrent-password!', 'second-concurrent-password!'];
+      const results = await Promise.all(passwords.map(password => createAccount({ ...newAccount, username: 'web-concurrent', password, confirmPassword: password, creationKey })));
+      assert.equal(results.filter(r => r.status === 201).length, 1, JSON.stringify(results));
+      assert.ok(results.every(r => [201, 409, 503].includes(r.status)), JSON.stringify(results));
+      const [[concurrent]] = await connection.execute('SELECT password_hash FROM hadir_users WHERE username = ?', ['web-concurrent']);
+      assert.equal(await verifyPassword(passwords[results.findIndex(r => r.status === 201)], concurrent.password_hash), true);
+      delete process.env.ACCOUNT_CREATION_KEY;
     });
     await t.test('workspace reads and writes need authentication', async () => {
       globalThis.__authUser = null;
@@ -181,6 +228,30 @@ test('MySQL migrations, controller transactions and local authentication', async
       const other = await mysql.createConnection(databaseOptions());
       try { const [[row]] = await other.execute('SELECT COUNT(*) AS count FROM hadir_punches WHERE owner_id = ?', [owner]); assert.equal(row.count, 1002); }
       finally { await other.end(); }
+    });
+    await t.test('signed-in account creation requires re-authentication with a separate persistent failure limit', async () => {
+      delete process.env.ACCOUNT_CREATION_KEY;
+      globalThis.__authUser = { userId: owner, fullName: 'Integration Admin' };
+      const body = { ...newAccount, username: 'added-by-admin' };
+      assert.equal((await createAccount(body)).status, 400);
+      const attemptKey = hashToken(`create-account|${owner}`);
+      for (let i = 0; i < 5; i++) assert.equal((await createAccount({ ...body, currentPassword: 'incorrect-password' })).status, 401);
+      const correct = { ...body, currentPassword: 'replacement-test-password!' };
+      assert.equal((await createAccount(correct)).status, 429);
+      assert.equal((await signIn('integration', correct.currentPassword)).status, 200);
+      await connection.execute('UPDATE hadir_login_attempts SET window_start = ? WHERE attempt_key = ?', ['2000-01-01T00:00:00.000Z', attemptKey]);
+      delete globalThis.__createdSession;
+      const result = await createAccount(correct);
+      assert.equal(result.status, 201, JSON.stringify(result));
+      assert.equal(globalThis.__createdSession, undefined); // Existing administrator keeps their session.
+      assert.equal((await get()).data.punches.length, 1002);
+      const [[added]] = await connection.execute('SELECT id FROM hadir_users WHERE username = ?', [body.username]);
+      globalThis.__authUser = { userId: added.id, fullName: body.name };
+      const empty = await get(); assert.equal(empty.data.initialized, false);
+      assert.equal(empty.data.employees.length, 0); assert.equal(empty.data.punches.length, 0);
+      assert.equal((await post({ action: 'initialize' })).status, 200);
+      globalThis.__authUser = { userId: owner, fullName: 'Integration Admin' };
+      assert.equal((await get()).data.employees.length, 1); assert.equal((await get()).data.punches.length, 1002);
     });
     const jar = new Map();
     const kioskCall = async (body, headers = {}) => {
@@ -433,5 +504,6 @@ test('MySQL migrations, controller transactions and local authentication', async
     await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb;
     delete globalThis.__faceScan; delete globalThis.__faceReady;
     if (previousFaceKey === undefined) delete process.env.FACE_ENCRYPTION_KEY; else process.env.FACE_ENCRYPTION_KEY = previousFaceKey;
+    if (previousCreationKey === undefined) delete process.env.ACCOUNT_CREATION_KEY; else process.env.ACCOUNT_CREATION_KEY = previousCreationKey;
   }
 });

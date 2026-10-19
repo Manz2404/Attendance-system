@@ -4,6 +4,7 @@ import { users, loginAttempts } from '@/db/schema';
 import { createSession } from '@/lib/auth';
 import { hashToken, validUsername, verifyPassword } from '@/lib/password.mjs';
 import { allowedOrigin, readJSON, RequestError } from '@/lib/request';
+import { databaseErrorCode, databaseFailure } from '@/lib/database-error.mjs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
     return json({ message: 'Signed in.' });
   } catch (error) {
     if (error instanceof RequestError) return json({ error: error.message }, error.status);
-    console.error('Sign-in failed:', error instanceof Error && 'code' in error ? error.code : 'server error');
-    return json({ error: 'Could not sign in. Check your database connection and run setup-windows.cmd.' }, 500);
+    console.error('Sign-in failed:', databaseErrorCode(error));
+    return json(databaseFailure(error), 503);
   }
 }

@@ -62,7 +62,11 @@ Deploy, generate a Railway HTTPS domain for the app service, and open its `/logi
 
 ## 3. Administrator and staff access
 
-If you imported the existing database, use the existing administrator account. If the database is fresh, open an interactive shell inside the deployed app using Railway's SSH feature or CLI, then run:
+If you imported the existing database, use the existing administrator account to access its employees and attendance. To add another login in the browser, open **Settings → Account & access → Add user** and confirm your current administrator password. Each new login starts with its own separate workspace.
+
+For an account created from the sign-in screen, set a private `ACCOUNT_CREATION_KEY` in the app service's variables, deploy, and use **Create an account** at `/register`. Generate a separate random 64-character hex code locally, enter it directly in your hosting dashboard, and supply it only to the person creating the account. The code is never sent to the browser automatically. Remove it from the server variables afterwards if anonymous account creation is no longer needed. The README's **Create login accounts in the browser** section has the full instructions. This browser flow also works on Render once the database connection is working.
+
+The command-line alternative remains available. If the database is fresh, open an interactive shell inside the deployed app using Railway's SSH feature or CLI, then run:
 
 ```sh
 npm run admin:create

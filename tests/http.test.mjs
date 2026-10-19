@@ -29,7 +29,8 @@ test('production server accepts the browser Host without allowing other origins'
   if (!existsSync('.next/BUILD_ID')) throw new Error('Run npm run build before test:http.');
   const port = await availablePort(), address = `http://127.0.0.1:${port}`;
   // Exercise the same options as serve.mjs; Linux CI also checks the cloud listener.
-  const config = serverOptions({ ...process.env, PORT: String(port), HADIR_BIND_HOST: '127.0.0.1', FACE_ENCRYPTION_KEY: '1'.repeat(64), NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1' }, process.env.TEST_CLOUD === 'true' ? 'cloud' : 'start');
+  const creationKey = 'c'.repeat(64);
+  const config = serverOptions({ ...process.env, PORT: String(port), HADIR_BIND_HOST: '127.0.0.1', FACE_ENCRYPTION_KEY: '1'.repeat(64), ACCOUNT_CREATION_KEY: creationKey, NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1' }, process.env.TEST_CLOUD === 'true' ? 'cloud' : 'start');
   const child = spawn(process.execPath, [require.resolve('next/dist/bin/next'), config.mode, '--hostname', config.host, '--port', String(config.port)], {
     env: config.env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -85,6 +86,7 @@ test('production server accepts the browser Host without allowing other origins'
       const response = await fetch(`${address}/login`);
       assert.equal(response.status, 200);
       const markup = await response.text();
+      assert.match(markup, /href="\/register"/); assert.doesNotMatch(markup, /setup-windows\.cmd/);
       const script = markup.match(/<script[^>]*id="hadir-appearance-bootstrap"[^>]*>([\s\S]*?)<\/script>/)?.[1];
       assert.ok(script, 'The appearance script must run before the page is displayed.');
       const values = {}, root = { dataset: {}, style: { setProperty: (key, value) => { values[key] = value; } } };
@@ -92,6 +94,18 @@ test('production server accepts the browser Host without allowing other origins'
       runInNewContext(script, { window: { matchMedia: () => ({ matches: false }), localStorage: { getItem: key => key === 'hadir-appearance' ? saved : null } }, document: { documentElement: root } }, { timeout: 2000 });
       assert.equal(root.dataset.theme, 'dark'); assert.equal(root.dataset.appearance, 'midnight');
       assert.equal(values['--surface'], '#000000'); assert.equal(values['--ink'], '#ededed'); assert.equal(values['--appearance-accent'], '#e11d48');
+    });
+    await t.test('account creation renders real inputs without publishing the private code', async () => {
+      const response = await fetch(`${address}/register`);
+      assert.equal(response.status, 200);
+      const markup = await response.text();
+      for (const name of ['name', 'username', 'password', 'confirmPassword', 'creationKey']) assert.ok(markup.includes(`name="${name}"`), name);
+      assert.match(markup, /Each login has its own attendance workspace/);
+      assert.ok(!markup.includes(creationKey), 'The server creation code must not appear in HTML or client props.');
+      const result = await fetch(`${address}/api/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json', origin: address }, body: JSON.stringify({ username: 'http-probe', name: 'HTTP Probe', password: 'test-only-password!', confirmPassword: 'test-only-password!', creationKey: 'incorrect-code' }) });
+      assert.equal(result.status, 403);
+      assert.equal((await result.json()).error, 'The account creation code is incorrect.');
+      assert.equal(result.headers.get('cache-control'), 'no-store');
     });
     await t.test('desktop launcher recognizes and reuses the running production server', async () => {
       assert.equal(await probeApplication(address), 'ready');
