@@ -255,7 +255,7 @@ a.nav-item { text-decoration:none; }
 .topbar { position:relative; isolation:isolate; }
 .topbar > .breadcrumb,.topbar > .topbar-right { position:relative; z-index:1; }
 .topbar-wave { position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none; color:var(--appearance-accent,var(--green)); }
-.topbar-wave svg { display:block; width:200%; max-width:none; height:100%; animation:topbar-wave-drift 4.8s ease-in-out both; }
+.topbar-wave svg { display:block; width:200%; max-width:none; height:100%; animation:topbar-wave-drift 8s linear infinite; }
 .topbar-wave-back { fill:currentColor; opacity:.08; }
 .topbar-wave-front { fill:currentColor; opacity:.14; stroke:currentColor; stroke-width:.6; }
 .sidebar nav .nav-item { position:relative; transition:background-color .22s ease,color .22s ease,box-shadow .22s ease; }
