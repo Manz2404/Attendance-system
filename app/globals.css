@@ -112,3 +112,93 @@
 .account-success .button{margin-top:8px}
 .account-actions{display:flex;gap:10px;flex-wrap:wrap}
 @media(max-width:520px){.account-passwords{grid-template-columns:1fr}.account-card{padding:28px 23px}.account-notice{font-size:11px}}
+
+
+/* Responsive layout: allow content to reflow without hiding records or controls. */
+html{scroll-padding-top:16px}
+.app-shell,.auth-page,.kiosk-screen{min-height:100dvh}
+.sidebar{overflow-y:auto;overscroll-behavior:contain;padding-bottom:env(safe-area-inset-bottom,0px)}
+.sidebar>*{flex-shrink:0}
+.sidebar-close{display:none}
+.main-content>*,.settings-grid>*,.form-row>*,.card-heading>div,
+.page-header>div,.face-capture,.kiosk-form,.auth-form label{min-width:0}
+.settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.page-actions,.section-toolbar,.card-heading,.dialog-actions,.mini-summary,
+.appearance-color-actions>div,.kiosk-footer,.app-footer{flex-wrap:wrap}
+.page-actions{flex-shrink:1}
+.button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.button>svg,.icon-button>svg{flex-shrink:0}
+.table-scroll{max-width:100%;overscroll-behavior-x:contain}
+.table-scroll:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+.auth-error,.error-box,.info-note,.account-notice,.settings-copy,
+.kiosk-state,.kiosk-workspace,.device-item,.setting-static,.toast{overflow-wrap:anywhere}
+.auth-page{padding-top:76px;padding-bottom:28px}
+.auth-theme{top:20px}
+.dialog{max-height:calc(100dvh - 24px)}
+.dialog header>div,.punch-list>div>div,.device-item>div{min-width:0}
+.face-capture,.face-preview{width:100%;min-width:0}
+.face-consent input{flex-shrink:0}
+.kiosk-header>div:last-child{min-width:0}
+@media(max-width:1050px){
+  .settings-grid{grid-template-columns:minmax(0,1fr)}
+  .page-header{flex-wrap:wrap}
+  .appearance-mode-row{flex-wrap:wrap}
+  .appearance-live-preview{flex-wrap:wrap}
+}
+@media(max-width:800px){
+  .sidebar{width:min(280px,calc(100vw - 48px));visibility:hidden}
+  .sidebar.open{visibility:visible}
+  .sidebar-close{display:inline-flex;align-self:flex-end;margin-bottom:12px}
+  .topbar{height:auto;min-height:66px;padding-top:10px;padding-bottom:10px;gap:8px;flex-wrap:wrap}
+  .breadcrumb{min-width:0;flex-wrap:wrap}
+  .topbar-right{margin-left:auto}
+  .overview-middle{grid-template-columns:minmax(0,1fr)}
+  .rate-card{display:block}
+  .section-toolbar{align-items:flex-start}
+  .appearance-row{flex-wrap:wrap}
+  .appearance-row select{max-width:100%}
+  .icon-button,.sidebar-profile .icon-button{min-width:44px;width:44px;height:44px}
+  .button,.theme-toggle,.nav-item,.kiosk-methods button{min-height:44px}
+}
+@media(max-width:560px){
+  /* 16px inputs avoid automatic zoom when focusing fields on iOS. */
+  input:not([type=color]):not([type=checkbox]),select,textarea,
+  .dialog label input,.dialog label select,.search-field input,
+  .date-control input,.settings-card form>label input,.appearance-row select{font-size:16px}
+  input:not([type=color]):not([type=checkbox]),select{max-width:100%;min-height:44px}
+  .form-row{grid-template-columns:minmax(0,1fr)}
+  .page-actions .button{flex:1 1 140px;margin-left:0}
+  .table-toolbar{flex-wrap:wrap}
+  .table-toolbar .search-field{min-width:0}
+  .table-toolbar select{flex:1 1 160px;width:100%}
+  .date-control input{width:auto;flex:1;min-width:0}
+  .table-toolbar .date-control{min-width:0;flex-basis:100%}
+  .section-toolbar .date-control{max-width:100%}
+  .dialog-actions .button{flex:1 1 120px}
+  .dialog fieldset{min-width:0}
+  .day-selector{flex-wrap:wrap}
+  .day-selector button{min-width:36px;min-height:44px;flex:1 1 36px}
+  .appearance-color-actions>div{align-self:stretch;flex-shrink:1}
+  .appearance-color-choice{max-width:100%;flex-wrap:wrap}
+  .appearance-row-label{flex-basis:100%}
+  .appearance-row select,.appearance-color-choice select{width:100%;max-width:100%}
+  .appearance-color-choice{width:100%}
+  .appearance-color-choice select{flex:1;min-width:0}
+  .appearance-accent-picker{flex-shrink:0}
+  .kiosk-card{padding:22px 16px}
+  .kiosk-footer{justify-content:center;text-align:center}
+  .kiosk-footer a{padding:10px}
+  .toast{bottom:max(16px,env(safe-area-inset-bottom,0px))}
+}
+@media(max-width:360px){
+  .stat-grid{grid-template-columns:minmax(0,1fr)}
+  .topbar-right>.avatar,.topbar-divider{display:none}
+  .auth-card,.account-card{padding:24px 16px}
+}
+@media(max-height:600px){
+  .sidebar{padding-top:12px}
+  .sidebar .brand{margin-bottom:16px}
+  .sidebar .workspace-select{margin-bottom:16px}
+  .sidebar-bottom{padding-top:12px}
+  .sidebar .mode-card{display:none}
+}
