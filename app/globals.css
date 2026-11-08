@@ -248,5 +248,5 @@ html{scroll-padding-top:16px}
 .staff-welcome { padding:28px; display:flex; align-items:center; gap:24px; margin-bottom:28px; }
 .staff-photo { width:88px; height:88px; border-radius:50%; object-fit:cover; flex-shrink:0; }
 .staff-initials { display:grid; place-items:center; font-size:28px; background:var(--surface); color:var(--ink); }
-.sidebar-bottom a.nav-item { text-decoration:none; }
+a.nav-item { text-decoration:none; }
 @media(max-width:640px) { .member-page { padding:16px; } .access-role-grid { grid-template-columns:1fr; gap:10px; } .access-role-grid .card { padding:18px; } .access-form fieldset { grid-template-columns:1fr; } .staff-welcome { padding:20px; align-items:flex-start; flex-direction:column; } .staff-welcome h1 { font-size:24px; overflow-wrap:anywhere; } }
