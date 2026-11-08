@@ -1,3 +1,4 @@
+import { workspaceAccess } from '@/lib/workspace-access';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { users, loginAttempts } from '@/db/schema';
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
     });
     if (outcome.limited) return json({ error: 'Too many failed attempts. Try again in 15 minutes.' }, 429);
     if (!outcome.userId) return json({ error: 'Incorrect username or password.' }, 401);
+    if (!await workspaceAccess({ userId: outcome.userId })) return json({ error: 'This account is inactive. Contact your administrator.' }, 403);
     await createSession(outcome.userId);
     return json({ message: 'Signed in.' });
   } catch (error) {

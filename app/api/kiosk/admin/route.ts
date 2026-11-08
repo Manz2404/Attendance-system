@@ -1,3 +1,4 @@
+import { workspaceAccess } from '@/lib/workspace-access';
 import { randomBytes } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { and, eq, lt, or, isNotNull } from 'drizzle-orm';
@@ -16,24 +17,28 @@ export async function POST(request: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) return json({ error: 'An administrator must sign in first.' }, 401);
+    const access = await workspaceAccess(user);
+    if (access?.role !== 'admin') return json({ error: 'Administrator access required.' }, 403);
     const body = await readJSON(request, 4096);
     if (body.action !== 'start' && body.action !== 'revoke') return json({ error: 'Choose a valid kiosk action.' }, 400);
     const jar = await cookies(), now = new Date(), createdAt = now.toISOString();
     const token = randomBytes(32).toString('hex'), expires = new Date(now.getTime() + 30 * 86400000);
     const outcome = await getDb().transaction(async db => {
-      const [ws] = await db.select().from(workspaces).where(eq(workspaces.ownerId, user.userId)).limit(1).for('update');
+      const [ws] = await db.select().from(workspaces).where(eq(workspaces.ownerId, access.ownerId)).limit(1).for('update');
       if (!ws) return 'missing';
+      const current = await workspaceAccess(user, db);
+      if (current?.role !== 'admin' || current.ownerId !== access.ownerId) throw new RequestError('Administrator access required.', 403);
       if (body.action === 'revoke') {
-        await db.delete(kioskSessions).where(eq(kioskSessions.ownerId, user.userId));
+        await db.delete(kioskSessions).where(eq(kioskSessions.ownerId, access.ownerId));
         return 'revoked';
       }
-      const [ready] = await db.select({ id: employees.id }).from(employees).leftJoin(employeePins, and(eq(employeePins.employeeId, employees.id), eq(employeePins.ownerId, user.userId))).leftJoin(employeeFaces, and(eq(employeeFaces.employeeId, employees.id), eq(employeeFaces.ownerId, user.userId)))
-        .where(and(eq(employees.ownerId, user.userId), eq(employees.active, true), or(isNotNull(employeePins.employeeId), isNotNull(employeeFaces.employeeId)))).limit(1);
+      const [ready] = await db.select({ id: employees.id }).from(employees).leftJoin(employeePins, and(eq(employeePins.employeeId, employees.id), eq(employeePins.ownerId, access.ownerId))).leftJoin(employeeFaces, and(eq(employeeFaces.employeeId, employees.id), eq(employeeFaces.ownerId, access.ownerId)))
+        .where(and(eq(employees.ownerId, access.ownerId), eq(employees.active, true), or(isNotNull(employeePins.employeeId), isNotNull(employeeFaces.employeeId)))).limit(1);
       if (!ready) return 'no-pins';
       await db.delete(kioskSessions).where(lt(kioskSessions.expiresAt, createdAt));
       const old = jar.get(kioskCookie)?.value;
-      if (old) await db.delete(kioskSessions).where(and(eq(kioskSessions.ownerId, user.userId), eq(kioskSessions.tokenHash, hashToken(old))));
-      await db.insert(kioskSessions).values({ tokenHash: hashToken(token), ownerId: user.userId, createdAt, expiresAt: expires.toISOString() });
+      if (old) await db.delete(kioskSessions).where(and(eq(kioskSessions.ownerId, access.ownerId), eq(kioskSessions.tokenHash, hashToken(old))));
+      await db.insert(kioskSessions).values({ tokenHash: hashToken(token), ownerId: access.ownerId, createdAt, expiresAt: expires.toISOString() });
       const adminToken = jar.get('hadir_session')?.value;
       if (adminToken) await db.delete(sessions).where(and(eq(sessions.userId, user.userId), eq(sessions.tokenHash, hashToken(adminToken))));
       return 'started';

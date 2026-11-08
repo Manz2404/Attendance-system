@@ -11,6 +11,7 @@ const migrations = [
   { version: '003-face', tables: ['hadir_employee_faces', 'hadir_face_challenges'] },
   { version: '004-profile-photos', tables: ['hadir_employee_photos'] },
   { version: '005-employee-contacts', tables: ['hadir_employee_contacts'] },
+  { version: '006-workspace-members', tables: ['hadir_workspace_members'] },
 ];
 export async function migrate(connection) {
   await checkDatabase(connection);

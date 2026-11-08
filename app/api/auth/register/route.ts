@@ -1,3 +1,4 @@
+import { workspaceAccess } from '@/lib/workspace-access';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { loginAttempts, users } from '@/db/schema';
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
     const account = accountDetails(body);
     const creator = await getCurrentUser();
     if (creator) {
+      if ((await workspaceAccess(creator))?.role !== 'admin') return json({ error: 'Administrator access required.' }, 403);
       if (typeof body.currentPassword !== 'string' || !body.currentPassword || body.currentPassword.length > 256) {
         return json({ error: 'Enter your current administrator password to add a user.' }, 400);
       }

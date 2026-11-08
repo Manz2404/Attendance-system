@@ -1,3 +1,4 @@
+import { workspaceAccess, canManageAttendance, canWriteWorkspace } from '@/lib/workspace-access';
 import { normalizePhone } from '@/lib/whatsapp.mjs';
 import { normalizeProfilePhoto } from '@/lib/profile-photo.mjs';
 import { and, eq, inArray, asc } from 'drizzle-orm';
@@ -29,7 +30,9 @@ const json = (data: unknown, status = 200) => Response.json(data, { status, head
 export async function GET() {
   const user = await getCurrentUser(); if (!user) return json({ error: 'Please sign in to continue.' }, 401);
   try {
-    const db = getDb(), owner = user.userId;
+    const access = await workspaceAccess(user);
+    if (!canManageAttendance(access)) return json({ error: 'You do not have access to workspace records.' }, 403);
+    const db = getDb(), owner = access!.ownerId;
     const [ws, staff, shifts, logs, hardware, pins, faces, photos, contacts] = await Promise.all([
       db.select().from(workspaces).where(eq(workspaces.ownerId, owner)).limit(1),
       db.select().from(employees).where(eq(employees.ownerId, owner)).orderBy(asc(employees.name)),
@@ -94,12 +97,17 @@ export async function POST(request: Request) {
   if (!request.headers.get('content-type')?.includes('application/json')) return json({ error: 'Send a JSON request.' }, 415);
   try {
     const body = await readJSON(request);
-    const action = field(body.action, 'Action', 30), owner = user.userId;
+    const action = field(body.action, 'Action', 30);
+    const access = await workspaceAccess(user);
+    if (!access || !canWriteWorkspace(access.role, action)) return json({ error: 'Your role cannot perform this action.' }, 403);
+    const owner = access.ownerId;
     return await getDb().transaction(async db => {
     if (action === 'initialize') { await initialize(db, owner); return json({ message: 'Workspace ready.' }); }
     // Serialize writes per workspace, including duplicate checks and CSV imports.
     const ws = await first(db.select().from(workspaces).where(eq(workspaces.ownerId, owner)).limit(1).for('update'));
     if (!ws) throw new InputError('Initialize your workspace first.');
+    const currentAccess = await workspaceAccess(user, db);
+    if (!currentAccess || currentAccess.ownerId !== owner || !canWriteWorkspace(currentAccess.role, action)) return json({ error: 'Your access has changed. Please sign in again.' }, 403);
     if (action === 'employee-pin' || action === 'remove-employee-pin') {
       const employeeId = field(body.employeeId, 'Employee', 36);
       const employee = await first(db.select({ id: employees.id }).from(employees).where(and(eq(employees.ownerId, owner), eq(employees.id, employeeId))).limit(1));

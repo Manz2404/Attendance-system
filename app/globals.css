@@ -228,3 +228,25 @@ html{scroll-padding-top:16px}
 @keyframes kiosk-welcome-in { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
 @media (max-width:480px) { .live-attendance-status time { width:100%; margin-left:16px; } }
 @media (prefers-reduced-motion:reduce) { .kiosk-success { animation:none; } }
+
+/* Shared workspace access and personal attendance */
+.member-page { max-width:1200px; margin:0 auto; padding:28px; }
+.member-header,.member-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.member-header { justify-content:space-between; margin-bottom:32px; }
+.access-role-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:20px 0; }
+.access-role-grid .card { padding:24px; }
+.access-role-grid p,.staff-welcome p { color:var(--muted); margin-top:8px; }
+.access-form { padding:24px; margin-bottom:24px; }
+.access-form fieldset { padding:0; margin:20px 0 0; border:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; min-width:0; }
+.access-form label,.member-page .page-header label { display:grid; gap:8px; min-width:0; }
+.access-form small { color:var(--muted); }
+.access-form input,.access-form select { width:100%; min-width:0; }
+.access-form .member-actions { grid-column:1/-1; }
+.member-page .table-scroll { overflow-x:auto; }
+.member-page table { min-width:620px; width:100%; }
+.member-page th,.member-page td { padding:16px; text-align:left; }
+.staff-welcome { padding:28px; display:flex; align-items:center; gap:24px; margin-bottom:28px; }
+.staff-photo { width:88px; height:88px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+.staff-initials { display:grid; place-items:center; font-size:28px; background:var(--surface); color:var(--ink); }
+.sidebar-bottom a.nav-item { text-decoration:none; }
+@media(max-width:640px) { .member-page { padding:16px; } .access-role-grid { grid-template-columns:1fr; gap:10px; } .access-role-grid .card { padding:18px; } .access-form fieldset { grid-template-columns:1fr; } .staff-welcome { padding:20px; align-items:flex-start; flex-direction:column; } .staff-welcome h1 { font-size:24px; overflow-wrap:anywhere; } }

@@ -11,3 +11,17 @@ The PIN kiosk uses a separate `002-kiosk.sql` upgrade. It adds `hadir_employee_p
 Reference: [MySQL 5.5 manual](https://downloads.mysql.com/docs/refman-5.5-en.a4.pdf).
 
 Webcam attendance adds `003-face.sql`: `hadir_employee_faces` stores encrypted templates and their model version; `hadir_face_challenges` stores hashes of one-use scan tokens bound to an employee and kiosk. It extends the source enum with `face`. Camera photos are not stored. The new VARCHAR indexes and TEXT template column work with MySQL 5.5.42; migrations 001 and 002 retain their original checksums. Run `setup-windows.cmd` after updating to generate/validate the private face key and apply this migration. Retain `.env` with secure database backups; it holds the key needed to read saved face templates.
+
+## Shared workspace roles (0.6.0)
+
+Run `npm run db:migrate` before starting this version. Migration 006 adds only `hadir_workspace_members`; existing accounts remain administrators of their existing workspaces. No attendance records are moved or deleted.
+
+In the Admin sidebar, open **User access → Add login**. Choose Admin, HR or Staff. Staff must be linked to an employee in this workspace. Share the username and initial password privately. All users sign in at the same login page; staff are routed to /portal.
+
+- Admin: workspace, attendance, schedules, employees, devices, kiosk and user access.
+- HR: employees, schedules, attendance editing/imports and reports. No user access, device or kiosk administration.
+- Staff: read only their linked employee's attendance and schedule. No workspace API access.
+- Disabling a login or resetting its password revokes its sessions. Disabling an employee also blocks their staff portal.
+- The original owner and the current administrator cannot have their access changed through this screen.
+- Existing independent workspace accounts are not merged automatically. New shared logins use unique usernames.
+- Passwords remain hashed. Admins can reset a member password by editing access; blank retains it.

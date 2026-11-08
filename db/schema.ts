@@ -103,3 +103,12 @@ export const employeeContacts = mysqlTable('hadir_employee_contacts', {
  ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
  phone: varchar('phone', { length: 15 }).notNull(),
 }, t => [index('hadir_employee_contacts_owner_idx').on(t.ownerId)]);
+
+export const workspaceMembers = mysqlTable('hadir_workspace_members', {
+ userId: varchar('user_id', { length: 36 }).primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+ ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
+ employeeId: varchar('employee_id', { length: 36 }).references(() => employees.id),
+ role: mysqlEnum('role', ['admin', 'hr', 'staff']).notNull(),
+ active: boolean('active').notNull().default(true),
+ createdAt: instant('created_at').notNull(),
+}, t => [uniqueIndex('hadir_members_employee_uq').on(t.employeeId), index('hadir_members_owner_idx').on(t.ownerId)]);
