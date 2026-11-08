@@ -213,3 +213,18 @@ html{scroll-padding-top:16px}
 .profile-photo-controls .text-button{justify-self:start}
 .profile-photo-controls input[type=file]{max-width:100%}
 @media(max-width:480px){.profile-photo-field{flex-direction:column}.profile-photo-controls{width:100%}}
+
+/* Live attendance and verified kiosk welcome */
+.live-attendance-status { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:20px; font-size:12px; color:var(--muted); }
+.live-attendance-status time { margin-left:auto; }
+.live-dot { width:8px; height:8px; border-radius:50%; background:#16a34a; flex-shrink:0; }
+.live-dot.offline { background:#d97706; }
+.kiosk-welcome-photo { position:relative; width:112px; height:112px; margin:0 auto 20px; }
+.kiosk-welcome-photo img,.kiosk-welcome-photo > span { width:100%; height:100%; border-radius:50%; object-fit:cover; }
+.kiosk-welcome-photo > span { display:grid; place-items:center; background:var(--surface); color:var(--ink); font-size:36px; font-weight:700; }
+.kiosk-welcome-photo > svg { position:absolute; right:0; bottom:0; color:#16a34a; background:var(--surface); border-radius:50%; }
+.kiosk-success { animation:kiosk-welcome-in .35s ease-out both; }
+.kiosk-success .kiosk-greeting { font-size:16px; margin-bottom:8px; }
+@keyframes kiosk-welcome-in { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+@media (max-width:480px) { .live-attendance-status time { width:100%; margin-left:16px; } }
+@media (prefers-reduced-motion:reduce) { .kiosk-success { animation:none; } }

@@ -69,16 +69,46 @@ export default function AttendanceApp({ displayName, signOutPath }: { displayNam
     if (!response.ok) throw new Error(result.error ?? 'Something went wrong. Please try again.');
     return result;
   }, []);
+  const [liveUpdated, setLiveUpdated] = useState<string | null>(null);
+  const [liveError, setLiveError] = useState(false);
+  const refreshGeneration = useRef(0);
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
     let result = await call();
     if (!result.initialized) { await call({ action: 'initialize' }); result = await call(); }
-    setData(result); setLoadError('');
+    if (generation !== refreshGeneration.current) return;
+    setData(result); setLoadError(''); setLiveError(false); setLiveUpdated(new Date().toISOString());
   }, [call]);
   useEffect(() => {
     if (initialized.current) return; initialized.current = true;
     refresh().catch(e => setLoadError(e.message)).finally(() => setLoading(false));
   }, [refresh]);
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(timer); }, []);
+  useEffect(() => {
+    if (loading || busy || modal || !['overview', 'attendance'].includes(page)) return;
+    let stopped = false, pending = false;
+    const controller = new AbortController();
+    async function poll() {
+      if (stopped || pending || document.visibilityState !== 'visible') return;
+      pending = true;
+      const generation = refreshGeneration.current;
+      try {
+        const response = await fetch('/api/workspace', { cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
+        if (response.status === 401) { window.location.assign('/login'); return; }
+        if (!response.ok) throw new Error('Refresh failed');
+        const result = await response.json() as Workspace & { initialized?: boolean };
+        if (!stopped && generation === refreshGeneration.current && result.initialized !== false) {
+          setData(result); setLiveError(false); setLiveUpdated(new Date().toISOString());
+        }
+      } catch { if (!stopped) setLiveError(true); }
+      finally { pending = false; }
+    }
+    const timer = setInterval(poll, 5000);
+    document.addEventListener('visibilitychange', poll);
+    window.addEventListener('online', poll);
+    return () => { stopped = true; controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', poll); window.removeEventListener('online', poll); };
+  }, [loading, busy, modal, page]);
+
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 5500); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => {
     const hash = () => { const id = window.location.hash.slice(1); if (['overview', 'attendance', 'employees', 'schedules', 'reports', 'devices', 'kiosk', 'settings'].includes(id)) { setPage(id as Page); setSearch(''); setStatus('All statuses'); } };
@@ -87,6 +117,7 @@ export default function AttendanceApp({ displayName, signOutPath }: { displayNam
   useEffect(() => { setPhotoBusy(false); setFormError(''); setImportRows([]); setImportName(''); setEmployeeActive(modal?.employee?.active ?? true); setDays(modal?.schedule?.weekdays.split(',').map(Number) ?? [1, 2, 3, 4, 5]); }, [modal]);
   function navigate(next: Page) { setPage(next); window.location.hash = next; setSearch(''); setStatus('All statuses'); setDepartment('All departments'); setMobileMenu(false); }
   async function mutate(body: Record<string, unknown>, close = true) {
+    ++refreshGeneration.current;
     setBusy(true); setFormError('');
     try { const result = await call(body); await refresh(); setToast(result.message ?? 'Saved.'); if (close) setModal(null); return true; }
     catch (e) { const message = e instanceof Error ? e.message : 'Please try again.'; if (modal) setFormError(message); else setToast(message); return false; }
@@ -158,11 +189,12 @@ export default function AttendanceApp({ displayName, signOutPath }: { displayNam
       {loading ? <div className="loading-state"><LoaderCircle className="spin" size={28} /><p>Opening your workspace…</p></div> : <>
       {sampleCount > 0 && page !== 'settings' && <div className="sample-banner"><Sparkles size={16} /><span>You’re viewing sample employees and attendance. Add your own team when you’re ready.</span><button onClick={() => navigate('settings')}>Manage samples <ChevronRight size={14} /></button></div>}
       {page === 'overview' && <>
+        <div className="live-attendance-status" role="status"><span className={liveError ? 'live-dot offline' : 'live-dot'} />{liveError ? 'Connection interrupted · showing last saved view · retrying automatically' : busy || modal ? 'Live updates paused while editing' : 'Live attendance · updates every 5 seconds'}{liveUpdated && <time>Last synced {timeMY(liveUpdated)} MYT</time>}</div>
         {!data.employees.length && <section className="welcome-banner"><div className="welcome-icon"><Sparkles size={29} /></div><div><span className="eyebrow">A FRESH START</span><h2>Your workspace is ready.</h2><p>Add your first employee, or explore a sample team to see how everything works.</p></div><div><button className="button primary" onClick={() => setModal({ kind: 'employee' })}><Plus size={17} />Add first employee</button><button className="button ghost" disabled={busy} onClick={() => mutate({ action: 'sample' }, false)}><Sparkles size={16} />Explore sample team</button></div></section>}
         <div className="section-toolbar"><div><h2>Daily overview</h2><span className="muted">A snapshot of your team’s day</span></div><label className="date-control"><CalendarDays size={17} /><input type="date" aria-label="Overview date" value={date} onChange={e => e.target.value && setDate(e.target.value)} /></label></div>
         <div className="stat-grid"><div className="stat-card"><div className="stat-heading">Employees on the roster<span className="stat-icon neutral"><Users size={19} /></span></div><strong>{records.length}<span>people</span></strong><p>{data.employees.filter(e => !e.active).length} inactive employees</p></div><div className="stat-card"><div className="stat-heading">Clocked in<span className="stat-icon green"><CheckCircle2 size={19} /></span></div><strong>{present}<span>of {records.length}</span></strong><p><span className="tiny-dot green-dot" />{attendanceRate}% of the roster</p></div><div className="stat-card"><div className="stat-heading">Late arrivals<span className="stat-icon amber"><Clock3 size={19} /></span></div><strong>{late}<span>people</span></strong><p>Based on each assigned schedule</p></div><div className="stat-card"><div className="stat-heading">Needs attention<span className="stat-icon rose"><AlertCircle size={19} /></span></div><strong>{missing + absent}<span>records</span></strong><p>{missing} incomplete · {absent} absent</p></div></div>
         <div className="overview-middle"><section className="card trend-card"><div className="card-heading"><div><h2>The week in view</h2><p>Clock-ins across the last seven days</p></div><span className="soft-label">{dateLabel(addDays(date, -6)).split(' ').slice(0, 2).join(' ')} – {dateLabel(date)}</span></div><div className="chart-legend"><span><i className="legend-square green-dot" />On time / unscheduled</span><span><i className="legend-square amber-dot" />Late</span></div><div className="bar-chart" role="img" aria-label={week.map(d => `${d.day}: ${d.present} attended, ${d.late} late`).join('. ')}>{[100, 75, 50, 25, 0].map(n => <div key={n} className="chart-gridline" style={{ bottom: `${n * 1.65 + 26}px` }} />)}{week.map((d, i) => { const max = Math.max(1, ...week.map(w => w.total)); return <div className={`chart-day ${i === 6 ? 'selected-day' : ''}`} key={d.date}><span className="bar-total">{d.present}</span><div className="bar-stack" style={{ height: `${Math.max(d.present / max * 155, 4)}px` }}><div className="bar-ontime" style={{ flex: Math.max(d.present - d.late, 0) }} /><div className="bar-late" style={{ flex: d.late }} /></div><span className="bar-label">{d.day}</span></div>; })}</div></section><section className="card rate-card"><div className="card-heading"><div><h2>Attendance rate</h2><p>{dateLabel(date)}</p></div><Activity size={18} className="muted" /></div><div className="rate-ring" style={{ background: `conic-gradient(var(--green) ${attendanceRate * 3.6}deg, #edf2ef 0)` }}><div><strong>{attendanceRate}<span>%</span></strong><small>clocked in</small></div></div><div className="rate-breakdown"><div><span><i className="tiny-dot green-dot" />Attended</span><strong>{present}</strong></div><div><span><i className="tiny-dot neutral-dot" />No clock-in</span><strong>{Math.max(records.length - present, 0)}</strong></div></div></section></div>
-        <div className="overview-bottom"><section className="card attendance-card"><div className="card-heading"><div><h2>Attendance overview</h2><p>{dateLabel(date, true)}</p></div><button className="text-button" onClick={() => navigate('attendance')}>View all <ArrowUpRight size={16} /></button></div>{attendanceTable(records.slice(0, 5), true)}</section><section className="card activity-card"><div className="card-heading"><div><h2>Recent activity</h2><p>Your latest attendance records</p></div><Activity size={18} className="muted" /></div><div className="activity-list">{latest.map(p => { const employee = data.employees.find(e => e.id === p.employeeId); return <div className="activity-item" key={p.id}><span className={`activity-icon ${p.kind === 'IN' ? 'in' : 'out'}`}>{p.kind === 'IN' ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}</span><div><strong>{employee?.name ?? 'Employee'}</strong><p>Clocked {p.kind === 'IN' ? 'in' : 'out'}<span> · {p.source === 'sample' ? 'sample' : p.source.toUpperCase()}</span></p><small>{dateLabel(dateMY(p.timestamp))}</small></div><time>{timeMY(p.timestamp)}</time></div>; })}{!latest.length && <EmptyState icon={<Clock3 size={23} />} title="A quiet start">Attendance activity will appear here.</EmptyState>}</div></section></div>
+        <div className="overview-bottom"><section className="card attendance-card"><div className="card-heading"><div><h2>Attendance overview</h2><p>{dateLabel(date, true)}</p></div><button className="text-button" onClick={() => navigate('attendance')}>View all <ArrowUpRight size={16} /></button></div>{attendanceTable(records.slice(0, 5), true)}</section><section className="card activity-card"><div className="card-heading"><div><h2>Recent activity</h2><p>Your latest attendance records</p></div><Activity size={18} className="muted" /></div><div className="activity-list">{latest.map(p => { const employee = data.employees.find(e => e.id === p.employeeId); return <div className="activity-item" key={p.id}><Avatar name={employee?.name ?? 'Employee'} photo={employee?.profilePhoto} small /><span className={`activity-icon ${p.kind === 'IN' ? 'in' : 'out'}`}>{p.kind === 'IN' ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}</span><div><strong>{employee?.name ?? 'Employee'}</strong><p>Clocked {p.kind === 'IN' ? 'in' : 'out'}<span> · {p.source === 'sample' ? 'sample' : p.source.toUpperCase()}</span></p><small>{dateLabel(dateMY(p.timestamp))}</small></div><time>{timeMY(p.timestamp)}</time></div>; })}{!latest.length && <EmptyState icon={<Clock3 size={23} />} title="A quiet start">Attendance activity will appear here.</EmptyState>}</div></section></div>
         <div className="footnote"><ShieldCheck size={15} />Saved to your MySQL database · All times in Malaysia time</div>
       </>}
       {page === 'attendance' && <><div className="mini-summary"><span><i className="tiny-dot green-dot" /><strong>{present}</strong> clocked in</span><span><i className="tiny-dot amber-dot" /><strong>{late}</strong> late</span><span><i className="tiny-dot rose-dot" /><strong>{missing}</strong> incomplete</span><span><i className="tiny-dot neutral-dot" /><strong>{absent}</strong> absent</span></div><section className="card"><div className="table-toolbar">{searchControl}<select aria-label="Filter attendance status" value={status} onChange={e => setStatus(e.target.value)}>{['All statuses', 'Present', 'On duty', 'Late', 'Absent', 'Missing punch', 'Not clocked in', 'Off day', 'Scheduled'].map(s => <option key={s}>{s}</option>)}</select><label className="date-control"><CalendarDays size={16} /><input type="date" aria-label="Attendance date" value={date} onChange={e => e.target.value && setDate(e.target.value)} /></label><button className="button secondary small-button" onClick={exportDaily} disabled={!filteredRecords.length}><Download size={16} />Export</button></div>{attendanceTable(filteredRecords)}<div className="table-footer"><span>{filteredRecords.length} of {records.length} employees · {dateLabel(date)}</span><button className="text-button" onClick={exportRaw} disabled={!records.some(r => r.events.length)}>Export raw punches <Download size={14} /></button></div></section><div className="info-note"><CircleHelp size={17} /><p>Working hours come from completed IN / OUT pairs. Review incomplete records using the three-dot menu. Overnight shifts are grouped with the day the shift starts.</p></div></>}

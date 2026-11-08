@@ -338,12 +338,19 @@ test('MySQL migrations, controller transactions and local authentication', async
       globalThis.__authUser = null;
     });
     await t.test('concurrent kiosk submissions save exactly one server-timestamped IN', async () => {
+      const photo = 'data:image/jpeg;base64,' + jpeg.encode({ width: 160, height: 160, data: Buffer.alloc(160 * 160 * 4, 255) }, 80).data.toString('base64');
+      await connection.execute('INSERT INTO hadir_employee_photos (employee_id, owner_id, photo) VALUES (?, ?, ?)', [employee.id, owner, photo]);
+      assert.equal((await kioskCall()).data.employees[0].profilePhoto, undefined);
+      assert.equal((await kioskCall({ employeeId: employee.id, pin: '999999' })).data.profilePhoto, undefined);
       const start = Date.now();
       const results = await Promise.all([kioskCall({ employeeId: employee.id, pin, timestamp: '2000-01-01T00:00:00Z', kind: 'IN' }), kioskCall({ employeeId: employee.id, pin })]);
       assert.ok(results.every(r => r.status === 200), JSON.stringify(results)); assert.equal(results.filter(r => !r.data.already).length, 1);
+      assert.ok(results.every(r => r.data.profilePhoto === photo));
       const [rows] = await connection.execute("SELECT * FROM hadir_punches WHERE owner_id = ? AND source = 'kiosk'", [owner]);
       assert.equal(rows.length, 1); assert.equal(rows[0].kind, 'IN'); assert.ok(Date.parse(rows[0].timestamp) >= start && Date.parse(rows[0].timestamp) <= Date.now());
       assert.equal((await kioskCall({ employeeId: employee.id, pin })).data.already, true);
+      await connection.execute('DELETE FROM hadir_employee_photos WHERE employee_id = ?', [employee.id]);
+      assert.equal((await kioskCall({ employeeId: employee.id, pin })).data.profilePhoto, null);
     });
     await t.test('cross-origin requests, missing PINs, inactive staff and foreign employees cannot clock in', async () => {
       assert.equal((await kioskCall({ employeeId: employee.id, pin }, { origin: 'https://evil.example' })).status, 403);
