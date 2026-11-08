@@ -63,3 +63,17 @@ test('first-paint bootstrap works with saved colors, legacy mode, corrupt JSON a
   assert.equal(boot({ dark: true, blocked: true }).root.dataset.theme, 'dark');
   assert.equal(boot().root.dataset.theme, 'light');
 });
+
+test('foreground changes text without recoloring surfaces, borders or accents', () => {
+  for (const theme of appearanceThemes) for (const mode of ['light', 'dark']) {
+    const background = mode === 'dark' ? '#050506' : '#ffffff';
+    const resolve = foreground => resolveAppearance({ theme: theme.id, mode, accent: '#2563eb', colors: { [mode]: { background, foreground } } });
+    const before = resolve(mode === 'dark' ? '#ededf2' : '#202020');
+    const after = resolve(mode === 'dark' ? '#ff1a1a' : '#990000');
+    assert.equal(after.foreground, mode === 'dark' ? '#ff1a1a' : '#990000');
+    for (const [name, value] of Object.entries(before.variables)) {
+      if (name === '--ink' || name === '--muted' || name.startsWith('--text-')) continue;
+      assert.equal(after.variables[name], value, theme.id + '/' + mode + '/' + name);
+    }
+  }
+});

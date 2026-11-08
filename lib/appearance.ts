@@ -60,23 +60,24 @@ export function createAppearanceTools() {
     const settings = normalize(value), mode: ColorMode = settings.mode === 'system' ? systemDark ? 'dark' : 'light' : settings.mode;
     const theme = themes.find(item => item.id === settings.theme) ?? themes[0], base = theme[mode];
     const custom = settings.colors[mode], background = custom?.background ?? base.background, foreground = custom?.foreground ?? base.foreground;
-    const raised = custom ? mix(background, foreground, 0.04) : base.card;
-    const card = contrast(raised, foreground) >= 4.5 ? raised : background;
+    const paletteInk = base.foreground;
+    const raised = background !== base.background ? mix(background, paletteInk, 0.04) : base.card;
+    const card = contrast(raised, paletteInk) >= 4.5 ? raised : background;
     const softSurface = (tint: string, amount: number) => {
       const candidate = mix(card, tint, amount);
-      return contrast(candidate, foreground) >= 4.5 ? candidate : card;
+      return contrast(candidate, paletteInk) >= 4.5 ? candidate : card;
     };
     const soft = softSurface(settings.accent, 0.12);
     const readable = (hex: string, backgrounds = [card, background]) => {
       if (backgrounds.every(surface => contrast(hex, surface) >= 4.5)) return hex;
-      for (let step = 1; step <= 100; step++) { const candidate = mix(hex, foreground, step / 100); if (backgrounds.every(surface => contrast(candidate, surface) >= 4.5)) return candidate; }
-      return foreground;
+      for (let step = 1; step <= 100; step++) { const candidate = mix(hex, paletteInk, step / 100); if (backgrounds.every(surface => contrast(candidate, surface) >= 4.5)) return candidate; }
+      return paletteInk;
     };
-    const accent = settings.accent, accentText = readable(accent, [card, background, soft]), muted = readable(mix(card, foreground, 0.67), [card, background, softSurface(foreground, 0.035)]);
+    const accent = settings.accent, accentText = readable(accent, [card, background, soft]), muted = readable(mix(card, paletteInk, 0.67), [card, background, softSurface(paletteInk, 0.035)]);
     const actionInk = contrast(accent, '#ffffff') >= 4.5 ? '#ffffff' : '#000000';
     const actionHover = mix(accent, actionInk === '#ffffff' ? '#000000' : '#ffffff', 0.13);
     const variables: Record<string, string> = {
-      '--surface': background, '--card': card, '--ink': foreground, '--muted': muted, '--line': mix(card, foreground, 0.16),
+      '--surface': background, '--card': card, '--ink': foreground, '--muted': custom ? foreground : muted, '--line': mix(card, paletteInk, 0.16),
       '--green': accentText, '--green-dark': readable(actionHover), '--soft-green': soft,
       '--appearance-accent': accent, '--appearance-action-ink': actionInk, '--appearance-action-hover': actionHover,
       'color-scheme': mode,
@@ -96,8 +97,11 @@ export function createAppearanceTools() {
       if (accentKeys.has(key)) variables[token] = accentText;
       else if (accentSurfaces.has(key)) variables[token] = soft;
       else if (lineKeys.has(key)) variables[token] = variables['--line'];
-      else if (luminance(original) > 0.58) variables[token] = family ? softSurface(family, 0.12) : softSurface(foreground, 0.035);
-      else variables[token] = family ? readable(family, [card, background, softSurface(family, 0.12)]) : luminance(original) < 0.055 ? foreground : muted;
+      else if (luminance(original) > 0.58) variables[token] = family ? softSurface(family, 0.12) : softSurface(paletteInk, 0.035);
+      else variables[token] = family ? readable(family, [card, background, softSurface(family, 0.12)]) : luminance(original) < 0.055 ? paletteInk : muted;
+      // Text-only aliases keep shared surface and border tokens independent.
+      variables['--text-' + key] = !family && !accentKeys.has(key) && luminance(original) <= 0.58
+        ? (custom ? foreground : variables[token]) : variables[token];
     }
     return { mode, theme: theme.id, background, foreground, card, accent, variables };
   }
