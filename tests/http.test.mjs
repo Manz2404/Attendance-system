@@ -100,7 +100,8 @@ test('production server accepts the browser Host without allowing other origins'
       assert.equal(response.status, 200);
       const markup = await response.text();
       for (const name of ['name', 'username', 'password', 'confirmPassword', 'creationKey']) assert.ok(markup.includes(`name="${name}"`), name);
-      assert.match(markup, /Each login has its own attendance workspace/);
+      assert.match(markup, /This creates a separate workspace/);
+      assert.match(markup, /use User access/);
       assert.ok(!markup.includes(creationKey), 'The server creation code must not appear in HTML or client props.');
       const result = await fetch(`${address}/api/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json', origin: address }, body: JSON.stringify({ username: 'http-probe', name: 'HTTP Probe', password: 'test-only-password!', confirmPassword: 'test-only-password!', creationKey: 'incorrect-code' }) });
       assert.equal(result.status, 403);
