@@ -1,6 +1,6 @@
 export const TIMEZONE = 'Asia/Kuala_Lumpur';
 export type Schedule = { id: string; name: string; startTime: string; endTime: string; breakMinutes: number; graceMinutes: number; weekdays: string };
-export type Employee = { id: string; code: string; name: string; department: string; scheduleId: string; deviceUserId: string | null; active: boolean; isSample: boolean; startDate: string; endDate: string | null; createdAt: string; kioskPinSet?: boolean; faceEnrolled?: boolean; profilePhoto?: string | null };
+export type Employee = { id: string; code: string; name: string; department: string; scheduleId: string; deviceUserId: string | null; active: boolean; isSample: boolean; startDate: string; endDate: string | null; createdAt: string; kioskPinSet?: boolean; faceEnrolled?: boolean; profilePhoto?: string | null; phone?: string | null };
 export type Punch = { id: string; employeeId: string; timestamp: string; kind: 'IN' | 'OUT'; source: 'manual' | 'csv' | 'sample' | 'kiosk' | 'face'; deviceId: string | null; note: string };
 export type Device = { id: string; name: string; brand: string; model: string; serialNumber: string | null; method: string };
 export type Workspace = { name: string; employees: Employee[]; schedules: Schedule[]; punches: Punch[]; devices: Device[]; today: string };

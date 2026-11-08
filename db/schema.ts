@@ -97,3 +97,9 @@ export const employeePhotos = mysqlTable('hadir_employee_photos', {
   ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
   photo: text('photo').notNull(),
 }, t => [index('hadir_employee_photos_owner_idx').on(t.ownerId)]);
+
+export const employeeContacts = mysqlTable('hadir_employee_contacts', {
+ employeeId: varchar('employee_id', { length: 36 }).primaryKey().references(() => employees.id, { onDelete: 'cascade' }),
+ ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
+ phone: varchar('phone', { length: 15 }).notNull(),
+}, t => [index('hadir_employee_contacts_owner_idx').on(t.ownerId)]);

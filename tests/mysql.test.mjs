@@ -85,7 +85,7 @@ test('MySQL migrations, controller transactions and local authentication', async
       await connection.execute('INSERT INTO hadir_schema_migrations VALUES (?, ?, ?)', ['001-initial', createHash('sha256').update(initial).digest('hex'), new Date().toISOString()]);
       await createAdmin(connection, { username: 'legacy', name: 'Legacy Admin', password });
       assert.equal(await migrate(connection), true); assert.equal(await migrate(connection), false);
-      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 15);
+      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 16);
       const [[legacy]] = await connection.execute('SELECT name FROM hadir_users WHERE username = ?', ['legacy']); assert.equal(legacy.name, 'Legacy Admin');
     });
     await t.test('administrator credentials are hashed and existing users are protected', async () => {
@@ -169,6 +169,15 @@ test('MySQL migrations, controller transactions and local authentication', async
       assert.equal((await post({ ...body, profilePhoto: '' })).status, 200);
       const after = (await get()).data.employees[0];
       assert.equal(after.profilePhoto, null); assert.equal(after.name, employee.name);
+    });
+    await t.test('employee phone is saved, validated and removable', async () => {
+      const body = { ...employee, action: 'employee', phone: '012-3456789' };
+      assert.equal((await post(body)).status,200);
+      assert.equal((await get()).data.employees[0].phone,'60123456789');
+      assert.equal((await post({...body, phone:'invalid'})).status,400);
+      assert.equal((await get()).data.employees[0].phone,'60123456789');
+      assert.equal((await post({...body, phone:''})).status,200);
+      assert.equal((await get()).data.employees[0].phone,null);
     });
     await t.test('invalid imports leave every row unsaved', async () => {
       const result = await post({ action: 'import', rows: [{ code: employee.code, timestamp: inTime, kind: 'IN' }, { code: 'UNKNOWN', timestamp: outTime, kind: 'OUT' }] });

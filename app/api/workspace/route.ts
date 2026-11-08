@@ -1,7 +1,8 @@
+import { normalizePhone } from '@/lib/whatsapp.mjs';
 import { normalizeProfilePhoto } from '@/lib/profile-photo.mjs';
 import { and, eq, inArray, asc } from 'drizzle-orm';
 import { getDb, type Connection } from '@/db';
-import { workspaces, employees, employeePhotos, schedules, devices, punches, employeePins, employeeFaces, kioskAttempts } from '@/db/schema';
+import { workspaces, employees, employeePhotos, employeeContacts, schedules, devices, punches, employeePins, employeeFaces, kioskAttempts } from '@/db/schema';
 import { hashPin, validPin, hashToken } from '@/lib/password.mjs';
 import { getCurrentUser } from '@/lib/auth';
 import { allowedOrigin, readJSON, RequestError } from '@/lib/request';
@@ -29,7 +30,7 @@ export async function GET() {
   const user = await getCurrentUser(); if (!user) return json({ error: 'Please sign in to continue.' }, 401);
   try {
     const db = getDb(), owner = user.userId;
-    const [ws, staff, shifts, logs, hardware, pins, faces, photos] = await Promise.all([
+    const [ws, staff, shifts, logs, hardware, pins, faces, photos, contacts] = await Promise.all([
       db.select().from(workspaces).where(eq(workspaces.ownerId, owner)).limit(1),
       db.select().from(employees).where(eq(employees.ownerId, owner)).orderBy(asc(employees.name)),
       db.select().from(schedules).where(eq(schedules.ownerId, owner)),
@@ -38,11 +39,13 @@ export async function GET() {
       db.select({ employeeId: employeePins.employeeId }).from(employeePins).where(eq(employeePins.ownerId, owner)),
       db.select({ employeeId: employeeFaces.employeeId }).from(employeeFaces).where(eq(employeeFaces.ownerId, owner)),
       db.select().from(employeePhotos).where(eq(employeePhotos.ownerId, owner)),
+      db.select().from(employeeContacts).where(eq(employeeContacts.ownerId, owner)),
     ]);
+    const phoneById = new Map(contacts.map(c => [c.employeeId, c.phone]));
     const photoById = new Map(photos.map(p => [p.employeeId, p.photo]));
     const hasPin = new Set(pins.map(p => p.employeeId));
     const hasFace = new Set(faces.map(f => f.employeeId));
-    return json({ initialized: !!ws[0], name: ws[0]?.name ?? 'My workspace', employees: staff.map(e => ({ ...e, profilePhoto: photoById.get(e.id) ?? null, kioskPinSet: hasPin.has(e.id), faceEnrolled: hasFace.has(e.id) })), schedules: shifts, punches: logs, devices: hardware, today: dateMY() });
+    return json({ initialized: !!ws[0], name: ws[0]?.name ?? 'My workspace', employees: staff.map(e => ({ ...e, phone: phoneById.get(e.id) ?? null, profilePhoto: photoById.get(e.id) ?? null, kioskPinSet: hasPin.has(e.id), faceEnrolled: hasFace.has(e.id) })), schedules: shifts, punches: logs, devices: hardware, today: dateMY() });
   } catch (error) { console.error('Attendance read failed', error instanceof Error ? error.name : 'server error'); return json({ error: 'Could not load your workspace. Please try again.' }, 500); }
 }
 
@@ -121,6 +124,11 @@ export async function POST(request: Request) {
     }
     if (action === 'workspace') { await db.update(workspaces).set({ name: field(body.name, 'Workspace name', 80) }).where(eq(workspaces.ownerId, owner)); return json({ message: 'Workspace updated.' }); }
     if (action === 'employee') {
+      let phone: string | null | undefined;
+      if (body.phone !== undefined) {
+        try { phone = normalizePhone(body.phone); }
+        catch (error) { throw new InputError(error instanceof Error ? error.message : 'Invalid phone number.'); }
+      }
       let profilePhoto: string | null | undefined;
       if (body.profilePhoto !== undefined) {
         try { profilePhoto = normalizeProfilePhoto(body.profilePhoto); }
@@ -145,6 +153,10 @@ export async function POST(request: Request) {
         if (existingLogs.some(p => { const d = workDate(p, shift); return d < startDate || (!!endDate && d > endDate); })) throw new InputError('Employment dates must cover this employee’s existing attendance records.');
         await db.update(employees).set(values).where(and(eq(employees.ownerId, owner), eq(employees.id, id)));
       } else await db.insert(employees).values({ ...values, id: employeeId, ownerId: owner, isSample: false, createdAt: new Date().toISOString() });
+      if (phone !== undefined) {
+        if (phone === null) await db.delete(employeeContacts).where(and(eq(employeeContacts.ownerId, owner), eq(employeeContacts.employeeId, employeeId)));
+        else await db.insert(employeeContacts).values({ employeeId, ownerId: owner, phone }).onDuplicateKeyUpdate({ set: { phone } });
+      }
       if (profilePhoto !== undefined) {
         if (profilePhoto === null) await db.delete(employeePhotos).where(and(eq(employeePhotos.ownerId, owner), eq(employeePhotos.employeeId, employeeId)));
         else await db.insert(employeePhotos).values({ employeeId, ownerId: owner, photo: profilePhoto }).onDuplicateKeyUpdate({ set: { photo: profilePhoto } });
