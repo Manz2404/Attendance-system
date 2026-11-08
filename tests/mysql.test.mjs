@@ -1,3 +1,4 @@
+import jpeg from 'jpeg-js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
@@ -84,7 +85,7 @@ test('MySQL migrations, controller transactions and local authentication', async
       await connection.execute('INSERT INTO hadir_schema_migrations VALUES (?, ?, ?)', ['001-initial', createHash('sha256').update(initial).digest('hex'), new Date().toISOString()]);
       await createAdmin(connection, { username: 'legacy', name: 'Legacy Admin', password });
       assert.equal(await migrate(connection), true); assert.equal(await migrate(connection), false);
-      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 14);
+      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 15);
       const [[legacy]] = await connection.execute('SELECT name FROM hadir_users WHERE username = ?', ['legacy']); assert.equal(legacy.name, 'Legacy Admin');
     });
     await t.test('administrator credentials are hashed and existing users are protected', async () => {
@@ -147,6 +148,27 @@ test('MySQL migrations, controller transactions and local authentication', async
       assert.equal((await post(body)).status, 200); assert.equal((await post(body)).status, 400);
       assert.equal((await post({ ...body, code: 'EMP-002', scheduleId: 'unknown' })).status, 400);
       employee = (await get()).data.employees[0]; assert.equal(employee.active, true); assert.equal(employee.isSample, false); assert.equal(employee.name, body.name);
+    });
+    await t.test('employee photos persist, remain private, and can be removed without changing staff', async () => {
+      const photo = 'data:image/jpeg;base64,' + jpeg.encode({ width: 160, height: 160, data: Buffer.alloc(160 * 160 * 4, 255) }, 80).data.toString('base64');
+      const body = { ...employee, action: 'employee', profilePhoto: photo };
+      assert.equal((await post(body)).status, 200);
+      const saved = (await get()).data.employees.find(e => e.id === employee.id).profilePhoto;
+      assert.ok(saved.startsWith('data:image/jpeg;base64,'));
+      const withoutPhoto = { ...body }; delete withoutPhoto.profilePhoto;
+      assert.equal((await post(withoutPhoto)).status, 200);
+      assert.equal((await get()).data.employees[0].profilePhoto, saved);
+      assert.equal((await post({ ...body, profilePhoto: 'data:image/jpeg;base64,YWJj' })).status, 400);
+      assert.equal((await get()).data.employees[0].profilePhoto, saved);
+      globalThis.__authUser = { userId: second, fullName: 'Second Admin' };
+      await post({ action: 'initialize' });
+      assert.equal((await get()).data.employees.length, 0);
+      assert.equal((await post(body)).status, 400);
+      globalThis.__authUser = { userId: owner, fullName: 'Integration Admin' };
+      assert.equal((await get()).data.employees[0].profilePhoto, saved);
+      assert.equal((await post({ ...body, profilePhoto: '' })).status, 200);
+      const after = (await get()).data.employees[0];
+      assert.equal(after.profilePhoto, null); assert.equal(after.name, employee.name);
     });
     await t.test('invalid imports leave every row unsaved', async () => {
       const result = await post({ action: 'import', rows: [{ code: employee.code, timestamp: inTime, kind: 'IN' }, { code: 'UNKNOWN', timestamp: outTime, kind: 'OUT' }] });

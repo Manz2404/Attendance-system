@@ -91,3 +91,9 @@ export const faceChallenges = mysqlTable('hadir_face_challenges', {
   employeeId: varchar('employee_id', { length: 36 }).notNull().references(() => employees.id, { onDelete: 'cascade' }),
   expiresAt: instant('expires_at').notNull(),
 }, t => [index('hadir_face_challenges_kiosk_idx').on(t.kioskTokenHash), index('hadir_face_challenges_expiry_idx').on(t.expiresAt)]);
+
+export const employeePhotos = mysqlTable('hadir_employee_photos', {
+  employeeId: varchar('employee_id', { length: 36 }).primaryKey().references(() => employees.id, { onDelete: 'cascade' }),
+  ownerId: varchar('owner_id', { length: 36 }).notNull().references(() => workspaces.ownerId),
+  photo: text('photo').notNull(),
+}, t => [index('hadir_employee_photos_owner_idx').on(t.ownerId)]);
