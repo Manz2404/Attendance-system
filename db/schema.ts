@@ -112,3 +112,12 @@ export const workspaceMembers = mysqlTable('hadir_workspace_members', {
  active: boolean('active').notNull().default(true),
  createdAt: instant('created_at').notNull(),
 }, t => [uniqueIndex('hadir_members_employee_uq').on(t.employeeId), index('hadir_members_owner_idx').on(t.ownerId)]);
+
+export const auditLogs = mysqlTable('hadir_audit_logs', {
+ id: id(), ownerId: varchar('owner_id', { length: 36 }).notNull(),
+ actorId: varchar('actor_id', { length: 36 }).notNull(),
+ actorName: varchar('actor_name', { length: 120 }).notNull(),
+ action: varchar('action', { length: 60 }).notNull(),
+ target: varchar('target', { length: 120 }).notNull(),
+ details: text('details').notNull(), createdAt: instant('created_at').notNull(),
+}, t => [index('hadir_audit_owner_time_idx').on(t.ownerId, t.createdAt, t.id)]);

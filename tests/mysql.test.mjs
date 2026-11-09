@@ -55,6 +55,9 @@ test('MySQL migrations, controller transactions and local authentication', async
   await build({ ...shared, entryPoints: ['app/api/members/route.ts'], outfile: membersPath, plugins: [authMock] });
   await build({ ...shared, entryPoints: ['app/api/portal/route.ts'], outfile: portalPath, plugins: [authMock] });
   const members = await import(pathToFileURL(membersPath)), portal = await import(pathToFileURL(portalPath));
+  const auditPath = resolve(runtime, 'audit.mjs');
+  await build({ ...shared, entryPoints: ['app/api/audit/route.ts'], outfile: auditPath, plugins: [authMock] });
+  const audit = await import(pathToFileURL(auditPath));
   const register = await import(pathToFileURL(registerPath));
   const kiosk = await import(pathToFileURL(kioskPath)), kioskAdmin = await import(pathToFileURL(kioskAdminPath));
   const face = await import(pathToFileURL(facePath)), enrollment = await import(pathToFileURL(enrollmentPath));
@@ -89,7 +92,7 @@ test('MySQL migrations, controller transactions and local authentication', async
       await connection.execute('INSERT INTO hadir_schema_migrations VALUES (?, ?, ?)', ['001-initial', createHash('sha256').update(initial).digest('hex'), new Date().toISOString()]);
       await createAdmin(connection, { username: 'legacy', name: 'Legacy Admin', password });
       assert.equal(await migrate(connection), true); assert.equal(await migrate(connection), false);
-      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 17);
+      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 18);
       const [[legacy]] = await connection.execute('SELECT name FROM hadir_users WHERE username = ?', ['legacy']); assert.equal(legacy.name, 'Legacy Admin');
     });
     await t.test('administrator credentials are hashed and existing users are protected', async () => {
@@ -614,6 +617,29 @@ test('MySQL migrations, controller transactions and local authentication', async
       await connection.execute('UPDATE hadir_employees SET active = 1 WHERE id = ?', [employee.id]);
       globalThis.__authUser = { userId: owner };
       assert.ok((await get()).data.punches.some(p => p.employeeId === employee.id));
+    });
+
+    await t.test('audit records are private, redact secrets and roll back with failed changes', async () => {
+      const request = () => new Request('http://127.0.0.1:3000/api/audit');
+      globalThis.__authUser = null; assert.equal((await audit.GET(request())).status, 401);
+      const [[hr]] = await connection.execute("SELECT user_id FROM hadir_workspace_members WHERE role = 'hr' LIMIT 1");
+      globalThis.__authUser = { userId: hr.user_id }; assert.equal((await audit.GET(request())).status, 403);
+      globalThis.__authUser = { userId: owner };
+      const before = (await connection.execute('SELECT COUNT(*) AS n FROM hadir_audit_logs WHERE owner_id = ?', [owner]))[0][0].n;
+      assert.equal((await post({ action: 'punch', code: 'MISSING', timestamp: inTime, kind: 'IN' })).status, 400);
+      assert.equal((await connection.execute('SELECT COUNT(*) AS n FROM hadir_audit_logs WHERE owner_id = ?', [owner]))[0][0].n, before);
+      assert.equal((await post({ action: 'workspace', name: 'Audited workspace' })).status, 200);
+      const response = await audit.GET(request()); assert.equal(response.status, 200);
+      const result = await response.json();
+      assert.ok(result.entries.length > 0); assert.ok(result.entries.every(e => e.ownerId === owner));
+      const [rows] = await connection.execute('SELECT * FROM hadir_audit_logs WHERE owner_id = ?', [owner]);
+      assert.ok(rows.some(r => r.action === 'member-updated' && r.details.includes('password reset: true')));
+      const serialized = JSON.stringify(rows);
+      assert.ok(!serialized.includes(password)); assert.ok(!serialized.includes('new-member-password!'));
+      assert.ok(!serialized.includes('scrypt-')); assert.ok(!serialized.includes('data:image/'));
+      globalThis.__authUser = { userId: second };
+      const other = await (await audit.GET(request())).json();
+      assert.ok(other.entries.every(e => e.ownerId === second));
     });
   } finally {
     await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb;

@@ -1,3 +1,4 @@
+import { writeAudit } from '@/lib/audit';
 import { and, eq, asc } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { users, sessions, employees, workspaces, workspaceMembers } from '@/db/schema';
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
     const userId = crypto.randomUUID(), createdAt = new Date().toISOString();
     await db.insert(users).values({ id: userId, username, name, passwordHash: passwordHash!, createdAt });
     await db.insert(workspaceMembers).values({ userId, ownerId: access.ownerId, employeeId, role, active: body.active as boolean, createdAt });
+    await writeAudit(db, access.ownerId, user.userId, 'member-created', userId, 'Role: ' + role + '; active: ' + body.active + '; linked employee: ' + (employeeId ?? 'none'));
     return json({ message: 'Login created in this workspace.' }, 201);
    }
    if (typeof body.userId !== 'string' || body.userId === user.userId || body.userId === access.ownerId) return json({ error: 'You cannot change your own access or the workspace owner.' }, 400);
@@ -63,6 +65,7 @@ export async function POST(request: Request) {
    await db.update(workspaceMembers).set({ role, employeeId, active: body.active as boolean }).where(eq(workspaceMembers.userId, member.userId));
    await db.update(users).set({ name, ...(passwordHash ? { passwordHash } : {}) }).where(eq(users.id, member.userId));
    await db.delete(sessions).where(eq(sessions.userId, member.userId));
+   await writeAudit(db, access.ownerId, user.userId, 'member-updated', member.userId, 'Role: ' + member.role + ' → ' + role + '; active: ' + member.active + ' → ' + body.active + '; employee: ' + (member.employeeId ?? 'none') + ' → ' + (employeeId ?? 'none') + '; password reset: ' + Boolean(passwordHash));
    return json({ message: 'Access updated. This user must sign in again.' });
   });
  } catch (error) {

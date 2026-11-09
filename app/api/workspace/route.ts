@@ -1,3 +1,4 @@
+import { writeAudit } from '@/lib/audit';
 import { workspaceAccess, canManageAttendance, canWriteWorkspace } from '@/lib/workspace-access';
 import { normalizePhone } from '@/lib/whatsapp.mjs';
 import { normalizeProfilePhoto } from '@/lib/profile-photo.mjs';
@@ -102,7 +103,11 @@ export async function POST(request: Request) {
     if (!access || !canWriteWorkspace(access.role, action)) return json({ error: 'Your role cannot perform this action.' }, 403);
     const owner = access.ownerId;
     return await getDb().transaction(async db => {
-    if (action === 'initialize') { await initialize(db, owner); return json({ message: 'Workspace ready.' }); }
+    async function saved(result: { message: string; added?: number; skipped?: number; count?: number }, target = '') {
+      await writeAudit(db, owner, user.userId, action, target, result.message);
+      return json(result);
+    }
+    if (action === 'initialize') { await initialize(db, owner); return saved({ message: 'Workspace ready.' }); }
     // Serialize writes per workspace, including duplicate checks and CSV imports.
     const ws = await first(db.select().from(workspaces).where(eq(workspaces.ownerId, owner)).limit(1).for('update'));
     if (!ws) throw new InputError('Initialize your workspace first.');
@@ -118,9 +123,9 @@ export async function POST(request: Request) {
         await db.insert(employeePins).values({ employeeId, ownerId: owner, pinHash, updatedAt }).onDuplicateKeyUpdate({ set: { pinHash, updatedAt } });
       } else await db.delete(employeePins).where(and(eq(employeePins.ownerId, owner), eq(employeePins.employeeId, employeeId)));
       await db.delete(kioskAttempts).where(eq(kioskAttempts.key, hashToken(`kiosk-pin|${owner}|${employeeId}`)));
-      return json({ message: action === 'employee-pin' ? 'Kiosk PIN saved.' : 'Kiosk PIN removed.' });
+      return saved({ message: action === 'employee-pin' ? 'Kiosk PIN saved.' : 'Kiosk PIN removed.' }, employeeId);
     }
-    if (action === 'sample') return json(await addSample(db, owner));
+    if (action === 'sample') return saved(await addSample(db, owner));
     if (action === 'clear-sample') {
       const sample = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.ownerId, owner), eq(employees.isSample, true)));
       await db.delete(punches).where(and(eq(punches.ownerId, owner), eq(punches.source, 'sample')));
@@ -128,9 +133,9 @@ export async function POST(request: Request) {
         await db.delete(punches).where(and(eq(punches.ownerId, owner), inArray(punches.employeeId, sample.map(e => e.id))));
         await db.delete(employees).where(and(eq(employees.ownerId, owner), eq(employees.isSample, true)));
       }
-      return json({ message: 'Sample employees and their punches removed. Your other records are kept.' });
+      return saved({ message: 'Sample employees and their punches removed. Your other records are kept.' });
     }
-    if (action === 'workspace') { await db.update(workspaces).set({ name: field(body.name, 'Workspace name', 80) }).where(eq(workspaces.ownerId, owner)); return json({ message: 'Workspace updated.' }); }
+    if (action === 'workspace') { await db.update(workspaces).set({ name: field(body.name, 'Workspace name', 80) }).where(eq(workspaces.ownerId, owner)); return saved({ message: 'Workspace updated.' }); }
     if (action === 'employee') {
       let phone: string | null | undefined;
       if (body.phone !== undefined) {
@@ -169,7 +174,7 @@ export async function POST(request: Request) {
         if (profilePhoto === null) await db.delete(employeePhotos).where(and(eq(employeePhotos.ownerId, owner), eq(employeePhotos.employeeId, employeeId)));
         else await db.insert(employeePhotos).values({ employeeId, ownerId: owner, photo: profilePhoto }).onDuplicateKeyUpdate({ set: { photo: profilePhoto } });
       }
-      return json({ message: id ? 'Employee updated.' : 'Employee added.' });
+      return saved({ message: id ? 'Employee updated.' : 'Employee added.' }, employeeId);
     }
     if (action === 'schedule') {
       const id = field(body.id, 'Schedule ID', 80, true), startTime = timeField(body.startTime, 'Start time'), endTime = timeField(body.endTime, 'End time');
@@ -183,20 +188,20 @@ export async function POST(request: Request) {
         if (!found) throw new InputError('Schedule not found.');
         await db.update(schedules).set(values).where(and(eq(schedules.ownerId, owner), eq(schedules.id, id)));
       } else await db.insert(schedules).values({ ...values, id: crypto.randomUUID(), ownerId: owner });
-      return json({ message: 'Schedule saved.' });
+      return saved({ message: 'Schedule saved.' }, id || values.name);
     }
     if (action === 'device') {
       const methods = ['Not selected', 'Push / ADMS', 'SDK / local gateway', 'CSV export'];
       const method = field(body.method, 'Connection method', 30); if (!methods.includes(method)) throw new InputError('Select a valid connection method.');
       await db.insert(devices).values({ id: crypto.randomUUID(), ownerId: owner, name: field(body.name, 'Device name', 80), brand: field(body.brand, 'Brand', 60), model: field(body.model, 'Model', 80), serialNumber: field(body.serialNumber, 'Serial number', 100, true) || null, method, createdAt: new Date().toISOString() });
-      return json({ message: 'Device registered. Hardware integration is still required.' });
+      return saved({ message: 'Device registered. Hardware integration is still required.' });
     }
     if (action === 'remove-device') {
       const id = field(body.id, 'Device ID', 80);
       const log = await first(db.select().from(punches).where(and(eq(punches.ownerId, owner), eq(punches.deviceId, id))).limit(1));
       if (log) throw new InputError('A device with linked attendance records cannot be removed.');
       await db.delete(devices).where(and(eq(devices.ownerId, owner), eq(devices.id, id)));
-      return json({ message: 'Device removed.' });
+      return saved({ message: 'Device removed.' }, id);
     }
     if (action === 'punch' || action === 'import') {
       const rows = action === 'punch' ? [body] : body.rows;
@@ -227,12 +232,12 @@ export async function POST(request: Request) {
       for (let i = 0; i < fresh.length; i += 100) await db.insert(punches).values(fresh.slice(i, i + 100));
       const added = fresh.length;
       const skipped = rows.length - added;
-      return json({ message: `${added} record${added !== 1 ? 's' : ''} saved. ${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped.`, added, skipped });
+      return saved({ message: `${added} record${added !== 1 ? 's' : ''} saved. ${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped.`, added, skipped });
     }
     if (action === 'delete-punch') {
       const id = field(body.id, 'Record ID', 80);
       await db.delete(punches).where(and(eq(punches.ownerId, owner), eq(punches.id, id)));
-      return json({ message: 'Attendance record removed.' });
+      return saved({ message: 'Attendance record removed.' }, id);
     }
     throw new InputError('Unknown action.');
     });
