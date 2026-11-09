@@ -101,10 +101,10 @@ export async function POST(request: Request) {
     const action = field(body.action, 'Action', 30);
     const access = await workspaceAccess(user);
     if (!access || !canWriteWorkspace(access.role, action)) return json({ error: 'Your role cannot perform this action.' }, 403);
-    const owner = access.ownerId;
+    const owner = access.ownerId, actorId = user.userId;
     return await getDb().transaction(async db => {
     async function saved(result: { message: string; added?: number; skipped?: number; count?: number }, target = '') {
-      await writeAudit(db, owner, user.userId, action, target, result.message);
+      await writeAudit(db, owner, actorId, action, target, result.message);
       return json(result);
     }
     if (action === 'initialize') { await initialize(db, owner); return saved({ message: 'Workspace ready.' }); }
