@@ -36,6 +36,11 @@ export default function AppearanceSettings() {
     const saved = resolveAppearance(savedSettings, systemDark);
     setBackground(saved.background); setForeground(saved.foreground);
   }
+  function resetAppearance() {
+    const next = normalizeAppearance();
+    const reset = resolveAppearance(next, systemDark);
+    update(next); setBackground(reset.background); setForeground(reset.foreground);
+  }
   function setMode(mode: AppearanceMode) { update({ ...candidate, mode }); }
   function applyColors() {
     if (!validColors || contrast < 4.5) return;
@@ -47,7 +52,7 @@ export default function AppearanceSettings() {
     setBackground(reset.background); setForeground(reset.foreground); update(next);
   }
   return <section className="card appearance-settings" aria-labelledby="appearance-title">
-    <header className="appearance-heading"><div><span className="appearance-eyebrow"><Palette size={15} />MAKE IT YOURS</span><h2 id="appearance-title">Appearance</h2><p>Preview your choices below, then confirm to use them.</p></div><button type="button" className="button secondary small-button" disabled={!ready} onClick={() => update(normalizeAppearance())}><RotateCcw size={14} />Reset appearance</button></header>
+    <header className="appearance-heading"><div><span className="appearance-eyebrow"><Palette size={15} />MAKE IT YOURS</span><h2 id="appearance-title">Appearance</h2><p>Preview your choices below, then confirm to use them.</p></div><button type="button" className="button secondary small-button" disabled={!ready} onClick={resetAppearance}><RotateCcw size={14} />Reset appearance</button></header>
     <h3 className="appearance-section-title">Visual style</h3>
     <div className="appearance-mode-row"><div className="appearance-row-label"><strong>Mode</strong><p>Follow your device or choose a look.</p></div><div className="appearance-modes" role="group" aria-label="Color mode">{modes.map(({ id, label, icon: Icon }) => <button type="button" key={id} disabled={!ready} className={`appearance-mode ${settings.mode === id ? 'is-selected' : ''}`} aria-pressed={settings.mode === id} onClick={() => setMode(id)}><span className={`appearance-miniature miniature-${id}`} aria-hidden="true"><span className="miniature-sidebar"><i /><i /><i /></span><span className="miniature-content"><i /><i /><span /><i /></span>{settings.mode === id && <span className="appearance-mode-check"><Check size={10} /></span>}</span><span className="appearance-mode-label"><Icon size={13} />{label}</span></button>)}</div></div>
     <div className="appearance-controls">
