@@ -252,7 +252,7 @@ a.nav-item { text-decoration:none; }
 @media(max-width:640px) { .member-page { padding:16px; } .access-role-grid { grid-template-columns:1fr; gap:10px; } .access-role-grid .card { padding:18px; } .access-form fieldset { grid-template-columns:1fr; } .staff-welcome { padding:20px; align-items:flex-start; flex-direction:column; } .staff-welcome h1 { font-size:24px; overflow-wrap:anywhere; } }
 
 /* Sidebar motion uses the user's accent and keeps text stationary. */
-.topbar { position:relative; isolation:isolate; }
+.topbar { position:sticky; top:0; z-index:20; flex-shrink:0; isolation:isolate; }
 .topbar > .breadcrumb,.topbar > .topbar-right { position:relative; z-index:1; }
 .topbar-wave { position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none; color:var(--appearance-accent,var(--green)); }
 .topbar-wave svg { display:block; width:200%; max-width:none; height:100%; animation:topbar-wave-drift 8s linear infinite; }
