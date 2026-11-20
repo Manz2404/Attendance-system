@@ -121,3 +121,10 @@ export const auditLogs = mysqlTable('hadir_audit_logs', {
  target: varchar('target', { length: 120 }).notNull(),
  details: text('details').notNull(), createdAt: instant('created_at').notNull(),
 }, t => [index('hadir_audit_owner_time_idx').on(t.ownerId, t.createdAt, t.id)]);
+
+
+export const userAppearance = mysqlTable('hadir_user_appearance', {
+  userId: varchar('user_id', { length: 36 }).primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  settings: text('settings').notNull(),
+  updatedAt: instant('updated_at').notNull(),
+});

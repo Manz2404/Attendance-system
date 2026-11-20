@@ -13,6 +13,7 @@ const migrations = [
   { version: '005-employee-contacts', tables: ['hadir_employee_contacts'] },
   { version: '006-workspace-members', tables: ['hadir_workspace_members'] },
   { version: '007-audit-log', tables: ['hadir_audit_logs'] },
+  { version: '008-user-appearance', tables: ['hadir_user_appearance'] },
 ];
 export async function migrate(connection) {
   await checkDatabase(connection);
@@ -53,3 +54,4 @@ if (process.argv[1]?.endsWith('migrate.mjs')) {
   catch (error) { console.error(explainError(error)); process.exitCode = 1; }
   finally { await connection?.end(); }
 }
+

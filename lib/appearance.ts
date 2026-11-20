@@ -6,6 +6,7 @@ export type AppearanceSettings = {
   mode: AppearanceMode;
   theme: 'hadir' | 'midnight' | 'sand';
   accent: string;
+  textSize: 'small' | 'normal' | 'large' | 'extra-large';
   colors: Record<ColorMode, ColorPair | null>;
 };
 
@@ -54,7 +55,8 @@ export function createAppearanceTools() {
       return isColor(item.background) && isColor(item.foreground) && contrast(item.background, item.foreground) >= 4.5
         ? { background: item.background.toLowerCase(), foreground: item.foreground.toLowerCase() } : null;
     };
-    return { version: 1, mode, theme: theme.id, accent: color(saved.accent, theme.accent), colors: { light: pair('light'), dark: pair('dark') } };
+    const textSize: AppearanceSettings['textSize'] = saved.textSize === 'small' || saved.textSize === 'large' || saved.textSize === 'extra-large' ? saved.textSize : 'normal';
+    return { version: 1, mode, textSize, theme: theme.id, accent: color(saved.accent, theme.accent), colors: { light: pair('light'), dark: pair('dark') } };
   }
   function resolve(value: unknown, systemDark = false) {
     const settings = normalize(value), mode: ColorMode = settings.mode === 'system' ? systemDark ? 'dark' : 'light' : settings.mode;
@@ -81,6 +83,7 @@ export function createAppearanceTools() {
       '--green': accentText, '--green-dark': readable(actionHover), '--soft-green': soft,
       '--appearance-accent': accent, '--appearance-action-ink': actionInk, '--appearance-action-hover': actionHover,
       'color-scheme': mode,
+      '--text-scale': String({ small: 0.9, normal: 1, large: 1.15, 'extra-large': 1.3 }[settings.textSize]),
     };
     for (const key of paletteKeys) {
       const original = '#' + key, [r, g, b] = rgb(original), maximum = Math.max(r, g, b), minimum = Math.min(r, g, b), difference = maximum - minimum;
@@ -118,3 +121,4 @@ export function applyAppearanceToRoot(root: HTMLElement, appearance: ReturnType<
 }
 
 export const appearanceBootstrap = `(()=>{try{const tools=(${createAppearanceTools.toString()})();const apply=(${applyAppearanceToRoot.toString()});let saved,legacy;try{legacy=window.localStorage.getItem('hadir-theme');try{saved=JSON.parse(window.localStorage.getItem('hadir-appearance')||'null')}catch(e){}}catch(e){}const dark=typeof window.matchMedia==='function'&&window.matchMedia('(prefers-color-scheme: dark)').matches;apply(document.documentElement,tools.resolve(tools.normalize(saved,legacy),dark))}catch(e){document.documentElement.dataset.theme='light'}})();`;
+

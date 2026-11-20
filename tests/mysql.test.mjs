@@ -58,6 +58,9 @@ test('MySQL migrations, controller transactions and local authentication', async
   const auditPath = resolve(runtime, 'audit.mjs');
   await build({ ...shared, entryPoints: ['app/api/audit/route.ts'], outfile: auditPath, plugins: [authMock] });
   const audit = await import(pathToFileURL(auditPath));
+  const appearancePath = resolve(runtime, 'appearance.mjs');
+  await build({ ...shared, entryPoints: ['app/api/appearance/route.ts'], outfile: appearancePath, plugins: [authMock] });
+  const appearanceRoute = await import(pathToFileURL(appearancePath));
   const register = await import(pathToFileURL(registerPath));
   const kiosk = await import(pathToFileURL(kioskPath)), kioskAdmin = await import(pathToFileURL(kioskAdminPath));
   const face = await import(pathToFileURL(facePath)), enrollment = await import(pathToFileURL(enrollmentPath));
@@ -92,7 +95,7 @@ test('MySQL migrations, controller transactions and local authentication', async
       await connection.execute('INSERT INTO hadir_schema_migrations VALUES (?, ?, ?)', ['001-initial', createHash('sha256').update(initial).digest('hex'), new Date().toISOString()]);
       await createAdmin(connection, { username: 'legacy', name: 'Legacy Admin', password });
       assert.equal(await migrate(connection), true); assert.equal(await migrate(connection), false);
-      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 18);
+      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 19);
       const [[legacy]] = await connection.execute('SELECT name FROM hadir_users WHERE username = ?', ['legacy']); assert.equal(legacy.name, 'Legacy Admin');
     });
     await t.test('administrator credentials are hashed and existing users are protected', async () => {
@@ -102,6 +105,29 @@ test('MySQL migrations, controller transactions and local authentication', async
       owner = accounts.find(a => a.username === 'integration').id; second = accounts.find(a => a.username === 'second').id;
       assert.ok(accounts.every(a => a.password_hash.startsWith('scrypt-v1$') && a.password_hash !== password));
       await assert.rejects(createAdmin(connection, { username: 'integration', name: 'Changed', password }), /already exists/);
+    });
+    await t.test('appearance persists across reads and isolates accounts with authenticated same-origin writes', async () => {
+      const save = (settings, headers = {}) => appearanceRoute.POST(new Request('http://127.0.0.1:3000/api/appearance', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ settings, userId: second }) }));
+      globalThis.__authUser = null;
+      assert.equal((await appearanceRoute.GET()).status, 401);
+      assert.equal((await save({ mode: 'dark' })).status, 401);
+      globalThis.__authUser = { userId: owner };
+      assert.equal((await (await appearanceRoute.GET()).json()).settings, null);
+      assert.equal((await save({ mode: 'dark' }, { origin: 'https://evil.example' })).status, 403);
+      assert.equal((await save({ mode: 'system' })).status, 400);
+      assert.equal((await save({ mode: 'dark', padding: 'x'.repeat(5000) })).status, 413);
+      const result = await save({ mode: 'dark', theme: 'midnight', accent: '#e11d48', textSize: 'large', colors: { dark: { background: '#000000', foreground: '#ededed' } } });
+      assert.equal(result.status, 200);
+      const saved = (await result.json()).settings;
+      globalThis.__authUser = { userId: second };
+      assert.equal((await (await appearanceRoute.GET()).json()).settings, null);
+      globalThis.__authUser = { userId: owner };
+      const response = await appearanceRoute.GET();
+      assert.match(response.headers.get('cache-control'), /no-store/);
+      assert.deepEqual((await response.json()).settings, saved);
+      assert.equal((await save({ ...saved, textSize: 'extra-large' })).status, 200);
+      assert.equal((await (await appearanceRoute.GET()).json()).settings.textSize, 'extra-large');
+      globalThis.__authUser = null;
     });
     await t.test('anonymous browser creation is disabled by default and requires the private creation code', async () => {
       globalThis.__authUser = null;
@@ -648,3 +674,4 @@ test('MySQL migrations, controller transactions and local authentication', async
     if (previousCreationKey === undefined) delete process.env.ACCOUNT_CREATION_KEY; else process.env.ACCOUNT_CREATION_KEY = previousCreationKey;
   }
 });
+

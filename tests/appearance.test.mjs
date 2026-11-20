@@ -29,7 +29,7 @@ test('every theme and accent keeps text, buttons, and selected navigation readab
     assert.ok(colorContrast(tokens['--muted'], appearance.card) >= 4.5, label);
     assert.ok(colorContrast(tokens['--appearance-action-ink'], accent.color) >= 4.5, label);
     assert.ok(colorContrast(tokens['--green'], tokens['--soft-green']) >= 4.5, label);
-    assert.ok(Object.entries(tokens).every(([name, value]) => name === 'color-scheme' || /^#[0-9a-f]{6}$/.test(value)), label);
+    assert.ok(Object.entries(tokens).every(([name, value]) => name === 'color-scheme' || name === '--text-scale' || /^#[0-9a-f]{6}$/.test(value)), label);
   }
 });
 
@@ -76,4 +76,17 @@ test('foreground changes text without recoloring surfaces, borders or accents', 
       assert.equal(after.variables[name], value, theme.id + '/' + mode + '/' + name);
     }
   }
+});
+
+
+test('text size is validated, preserved in JSON, and resolved for previews and other devices', () => {
+  for (const [textSize, factor] of [['small', '0.9'], ['normal', '1'], ['large', '1.15'], ['extra-large', '1.3']]) {
+    const settings = normalizeAppearance({ mode: 'dark', textSize, theme: 'midnight', accent: '#e11d48' });
+    assert.equal(settings.textSize, textSize);
+    const saved = normalizeAppearance(JSON.parse(JSON.stringify(settings)));
+    assert.deepEqual(saved, settings);
+    assert.equal(resolveAppearance(saved, false).variables['--text-scale'], factor);
+    assert.deepEqual(resolveAppearance(saved, true), resolveAppearance(saved, false));
+  }
+  for (const textSize of ['huge', 99, null, '1;display:none']) assert.equal(normalizeAppearance({ textSize }).textSize, 'normal');
 });
