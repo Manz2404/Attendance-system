@@ -95,7 +95,7 @@ test('MySQL migrations, controller transactions and local authentication', async
       await connection.execute('INSERT INTO hadir_schema_migrations VALUES (?, ?, ?)', ['001-initial', createHash('sha256').update(initial).digest('hex'), new Date().toISOString()]);
       await createAdmin(connection, { username: 'legacy', name: 'Legacy Admin', password });
       assert.equal(await migrate(connection), true); assert.equal(await migrate(connection), false);
-      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 19);
+      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 23);
       const [[legacy]] = await connection.execute('SELECT name FROM hadir_users WHERE username = ?', ['legacy']); assert.equal(legacy.name, 'Legacy Admin');
     });
     await t.test('administrator credentials are hashed and existing users are protected', async () => {
@@ -666,6 +666,49 @@ test('MySQL migrations, controller transactions and local authentication', async
       globalThis.__authUser = { userId: second };
       const other = await (await audit.GET(request())).json();
       assert.ok(other.entries.every(e => e.ownerId === second));
+    });
+    await t.test('leave transactions enforce quotas, privacy, approvals, cancellation and overlap', async () => {
+      const leavePath=resolve(runtime,'leave.mjs'), attachmentPath=resolve(runtime,'leave-attachment.mjs');
+      await build({...shared,entryPoints:['app/api/leave/route.ts'],outfile:leavePath,plugins:[authMock]});
+      await build({...shared,entryPoints:['app/api/leave/attachment/route.ts'],outfile:attachmentPath,plugins:[authMock]});
+      const leave=await import(pathToFileURL(leavePath)),attachment=await import(pathToFileURL(attachmentPath));
+      const call=body=>leave.POST(new Request('http://127.0.0.1:3000/api/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));
+      const list=()=>leave.GET(new Request('http://127.0.0.1:3000/api/leave?year=2027'));
+      globalThis.__authUser=null;assert.equal((await list()).status,401);
+      const [[staff]]=await connection.execute("SELECT user_id FROM hadir_workspace_members WHERE employee_id=?",[employee.id]);
+      const [[hr]]=await connection.execute("SELECT user_id FROM hadir_workspace_members WHERE owner_id=? AND role='hr' LIMIT 1",[owner]);
+      await connection.execute('UPDATE hadir_employees SET start_date=?,end_date=NULL WHERE id=?',['2026-01-01',employee.id]);
+      globalThis.__authUser={userId:owner};
+      let response=await call({action:'quota',year:2027,type:'annual',employeeId:employee.id,days:2});assert.equal(response.status,200,await response.text());
+      response=await call({action:'policy',policy:{calendar:['annual','mc'],attachment:['mc'],holidays:[],managers:{}}});assert.equal(response.status,200,await response.text());
+      globalThis.__authUser={userId:staff.user_id};
+      assert.equal((await call({action:'quota',year:2027,type:'annual',employeeId:employee.id,days:100})).status,403);
+      const apply={action:'apply',employeeId:crypto.randomUUID(),type:'annual',start:'2027-01-04',end:'2027-01-04',part:'full',reason:'Test request'};
+      const concurrent=await Promise.all([call(apply),call(apply)]);assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,400]);
+      let listing=await (await list()).json();assert.equal(listing.requests.length,1);const id=listing.requests[0].id;
+      assert.equal(listing.requests[0].employeeId,employee.id);
+      assert.equal((await call({action:'approve',id,note:''})).status,403);
+      assert.equal((await call({...apply,start:'2027-01-05',end:'2027-01-06'})).status,400);
+      globalThis.__authUser={userId:second};assert.equal((await call({action:'approve',id,note:''})).status,404);
+      assert.equal((await (await list()).json()).requests.length,0);
+      globalThis.__authUser={userId:owner};assert.equal((await call({action:'quota',year:2027,type:'annual',employeeId:employee.id,days:0})).status,400);
+      globalThis.__authUser={userId:hr.user_id};assert.equal((await call({action:'approve',id,note:'Approved'})).status,200);
+      assert.equal((await call({action:'approve',id,note:''})).status,409);
+      globalThis.__authUser={userId:staff.user_id};assert.equal((await call({action:'cancel',id})).status,200);
+      listing=await (await list()).json();assert.equal(listing.requests[0].status,'cancel_requested');
+      globalThis.__authUser={userId:hr.user_id};assert.equal((await call({action:'approve-cancel',id,note:''})).status,200);
+      globalThis.__authUser={userId:owner};assert.equal((await call({action:'quota',year:2027,type:'mc',employeeId:employee.id,days:2})).status,200);
+      globalThis.__authUser={userId:staff.user_id};assert.equal((await call({...apply,type:'mc'})).status,400);
+      const file={mime:'application/pdf',data:Buffer.from('%PDF-1.4\nTest document').toString('base64')};
+      assert.equal((await call({...apply,type:'mc',attachment:{...file,data:Buffer.from('not a PDF file').toString('base64')}})).status,400);
+      response=await call({...apply,type:'mc',attachment:file});assert.equal(response.status,200,await response.text());
+      listing=await (await list()).json();const mc=listing.requests.find(r=>r.type==='mc');assert.ok(mc.attachment);
+      const download=()=>attachment.GET(new Request('http://127.0.0.1:3000/api/leave/attachment?id='+mc.id));
+      assert.equal((await download()).status,200);
+      globalThis.__authUser={userId:second};assert.equal((await download()).status,404);
+      globalThis.__authUser={userId:hr.user_id};const doc=await download();assert.equal(doc.status,200);assert.match(doc.headers.get('content-disposition'),/attachment/);
+      assert.equal((await call({action:'reject',id:mc.id,note:''})).status,400);
+      assert.equal((await call({action:'reject',id:mc.id,note:'Document needs correction'})).status,200);
     });
   } finally {
     await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb;

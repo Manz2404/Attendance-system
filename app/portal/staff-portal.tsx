@@ -29,7 +29,7 @@ export default function StaffPortal() {
  const worked = records.reduce((total, r) => total + r.paidMinutes, 0);
  const shift = data?.schedules[0];
  return <main className="member-page">
-  <header className="member-header"><strong>hadir. <span className="muted">Staff portal</span></strong><div className="member-actions"><ThemeToggle /><a className="button secondary" href="/logout">Sign out</a></div></header>
+  <header className="member-header"><strong>hadir. <span className="muted">Staff portal</span></strong><div className="member-actions"><a className="button primary" href="/leave">My leave</a><ThemeToggle /><a className="button secondary" href="/logout">Sign out</a></div></header>
   {error && <p className="error-banner" role="alert">{error} Retrying automatically.</p>}
   {!data ? <section className="card empty-state"><h1>Opening your attendance…</h1></section> : <>
    <section className="card staff-welcome">{data.employee.profilePhoto ? <img src={data.employee.profilePhoto} alt="" className="staff-photo" /> : <span className="staff-photo staff-initials">{data.employee.name.split(/\s+/).slice(0, 2).map(n => n[0]).join('')}</span>}<div><div className="eyebrow">{data.name}</div><h1>Hello, {data.employee.name}</h1><p>{data.employee.code} · {data.employee.department}</p><p>{shift ? shift.name + ' · ' + shift.startTime + '–' + shift.endTime : 'No schedule assigned'} · Malaysia time</p></div></section>
@@ -41,3 +41,4 @@ export default function StaffPortal() {
   </>}
  </main>;
 }
+

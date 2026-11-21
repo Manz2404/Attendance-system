@@ -14,6 +14,7 @@ const migrations = [
   { version: '006-workspace-members', tables: ['hadir_workspace_members'] },
   { version: '007-audit-log', tables: ['hadir_audit_logs'] },
   { version: '008-user-appearance', tables: ['hadir_user_appearance'] },
+  { version: '009-leave', tables: ['hadir_leave_settings', 'hadir_leave_entitlements', 'hadir_leave_requests', 'hadir_leave_attachments'] },
 ];
 export async function migrate(connection) {
   await checkDatabase(connection);

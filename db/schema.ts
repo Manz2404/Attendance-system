@@ -128,3 +128,22 @@ export const userAppearance = mysqlTable('hadir_user_appearance', {
   settings: text('settings').notNull(),
   updatedAt: instant('updated_at').notNull(),
 });
+
+export const leaveSettings = mysqlTable('hadir_leave_settings', {
+ ownerId: varchar('owner_id', { length: 36 }).primaryKey(), settings: text('settings').notNull(),
+});
+export const leaveEntitlements = mysqlTable('hadir_leave_entitlements', {
+ id: varchar('id', { length: 100 }).primaryKey(), ownerId: varchar('owner_id', { length: 36 }).notNull(),
+ employeeId: varchar('employee_id', { length: 36 }).notNull(), year: int('year').notNull(),
+ type: varchar('type', { length: 20 }).notNull(), units: int('units').notNull(),
+});
+export const leaveRequests = mysqlTable('hadir_leave_requests', {
+ id: id(), ownerId: varchar('owner_id', { length: 36 }).notNull(), employeeId: varchar('employee_id', { length: 36 }).notNull(),
+ year: int('year').notNull(), type: varchar('type', { length: 20 }).notNull(), days: text('days').notNull(),
+ reason: varchar('reason', { length: 1000 }).notNull(), status: varchar('status', { length: 30 }).notNull(),
+ requestedBy: varchar('requested_by', { length: 36 }).notNull(), reviewedBy: varchar('reviewed_by', { length: 36 }),
+ reviewNote: varchar('review_note', { length: 1000 }).notNull(), createdAt: instant('created_at').notNull(), updatedAt: instant('updated_at').notNull(),
+});
+export const leaveAttachments = mysqlTable('hadir_leave_attachments', {
+ requestId: varchar('request_id', { length: 36 }).primaryKey(), mime: varchar('mime', { length: 40 }).notNull(), data: text('data').notNull(),
+});
