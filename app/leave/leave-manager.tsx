@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, useRef, type FormEvent } from 'react';
 import { CalendarDays, ArrowLeft, Plus, Check, X, Settings2, Download } from 'lucide-react';
 import ThemeToggle from '../theme-toggle';
 import { leaveTypes, leaveLabels, balance, units, type LeaveType, type LeavePolicy, type LeaveRecord } from '@/lib/leave';
@@ -12,12 +12,15 @@ export default function LeaveManager() {
  const [year,setYear]=useState(currentYear),[data,setData]=useState<Data|null>(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
  const [tab,setTab]=useState('requests'),[apply,setApply]=useState(false),[employee,setEmployee]=useState(''),[month,setMonth]=useState(new Date().getMonth()+1),[policy,setPolicy]=useState<LeavePolicy|null>(null);
  const [review,setReview]=useState<{id:string;action:string}|null>(null),[note,setNote]=useState(''),[filter,setFilter]=useState('all');
+ const loadGeneration=useRef(0);
  async function load() {
+  const generation=++loadGeneration.current;
   const response=await fetch('/api/leave?year='+year,{cache:'no-store'}); const result=await response.json();
+  if(generation!==loadGeneration.current) return;
   if(!response.ok) throw new Error(result.error||'Could not load leave.');
   setData(result); setPolicy(result.policy); setEmployee(old=>result.employees.some((e:Employee)=>e.id===old)?old:result.employeeId||result.employees[0]?.id||'');
  }
- useEffect(()=>{setData(null);load().catch(e=>setError(e.message));},[year]);
+ useEffect(()=>{setData(null);setApply(false);setReview(null);load().catch(e=>setError(e.message));return ()=>{loadGeneration.current++;};},[year]);
  async function save(body:unknown) {
   if(busy) return false; setBusy(true);setError('');setMessage('');
   try {const response=await fetch('/api/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const result=await response.json();if(!response.ok) throw new Error(result.error);await load();setMessage(result.message);return true;}

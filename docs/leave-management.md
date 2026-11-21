@@ -8,7 +8,7 @@ Before installing, stop the Hadir app (not MySQL or cloudflared). Export the ent
 
 Use a separate test database restored from your backup to validate the feature first. Never run automated tests against your attendance database.
 
-After pulling the feature branch: install locked dependencies with `npm ci`, run `npm run db:migrate`, then `npm run build`. Start with `npm start` only after the build succeeds and port 3000 is free. Do not build over a running production server.
+After pulling the feature branch: install dependencies with `npm install`, run `npm run db:migrate`, then `npm run build`. Start with `npm start` only after the build succeeds and port 3000 is free. Do not build over a running production server.
 
 ## Configuration
 
@@ -28,7 +28,7 @@ Calendar shows approved and cancellation-pending leave visible to the viewer: ow
 
 ## Rollback
 
-Stop the Hadir server first. With local edits safely backed up, switch to `backup/before-leave-2026-11-22`. Run `npm ci`, remove only the generated `.next` folder, run `npm run build`, then `npm start`. Hard-refresh the browser.
+Stop the Hadir server first. With local edits safely backed up, switch to `backup/before-leave-2026-11-22`. Run `npm install`, remove only the generated `.next` folder, run `npm run build`, then `npm start`. Hard-refresh the browser.
 
 Migration 009 adds four tables and does not alter existing tables. A code-only rollback leaves leave records stored but unavailable through the old UI; do not drop these tables. The old migrator ignores the new migration entry. Returning to the feature branch restores access to those records.
 

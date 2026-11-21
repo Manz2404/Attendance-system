@@ -9,7 +9,7 @@ import { leaveTypes, defaultLeavePolicy, leaveDays, units, balance, overlaps, re
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const json = (body: unknown, status = 200) => Response.json(body, {status, headers:{'Cache-Control':'private, no-store'}});
-const fail = (message: string, status = 400): never => { throw new RequestError(message, status); };
+function fail(message: string, status = 400): never { throw new RequestError(message, status); }
 function yearValue(value: unknown) { const n=Number(value); if(!Number.isInteger(n)||n<2000||n>2100) fail('Choose a year from 2000 to 2100.'); return n; }
 function typeValue(value: unknown) { if(!leaveTypes.includes(value as LeaveType)) fail('Invalid leave type.'); return value as LeaveType; }
 function textValue(value: unknown, max: number, required=false) { if(typeof value!=='string'||value.length>max||required&&!value.trim()) fail('Enter valid text (maximum '+max+' characters).'); return value.trim(); }
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     const [schedule]=await tx.select().from(schedules).where(and(eq(schedules.id,employee.scheduleId),eq(schedules.ownerId,owner))); if(!schedule) fail('Employee schedule unavailable.');
     const type=typeValue(body.type), start=String(body.start), end=String(body.end), year=yearValue(start.slice(0,4));
     if(start<employee.startDate||employee.endDate&&end>employee.endDate) fail('Leave must be within employment dates.');
-    let days; try { days=leaveDays(start,end,String(body.part),schedule.weekdays,policy.calendar.includes(type),policy.holidays); } catch(e) { fail((e as Error).message); }
+    let days: ReturnType<typeof leaveDays>; try { days=leaveDays(start,end,String(body.part),schedule.weekdays,policy.calendar.includes(type),policy.holidays); } catch(e) { fail((e as Error).message); }
     const records=(await tx.select().from(leaveRequests).where(and(eq(leaveRequests.ownerId,owner),eq(leaveRequests.employeeId,employee.id),eq(leaveRequests.year,year)))).map(r=>({...r,type:r.type as LeaveType,days:JSON.parse(r.days)}));
     if(records.some(r=>reserved(r.status)&&overlaps(days,r.days))) fail('These dates overlap an existing pending or approved request.');
     const [quota]=await tx.select().from(leaveEntitlements).where(eq(leaveEntitlements.id,`${employee.id}:${year}:${type}`));
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
    }
    await tx.update(leaveRequests).set({status,reviewNote:note,reviewedBy:reviewer,updatedAt:now}).where(eq(leaveRequests.id,row.id));
    await writeAudit(tx,owner,user.userId,'leave-'+action,row.id,`Status: ${row.status} → ${status}.`);
-  });
+  }, { isolationLevel: 'read committed' });
   return json({message:'Leave changes saved.'});
  } catch(e) { if(!(e instanceof RequestError)) console.error('Leave change failed',e); return json({error:e instanceof RequestError?e.message:'Could not save leave. Please retry.'},e instanceof RequestError?e.status:500); }
 }
