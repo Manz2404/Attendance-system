@@ -18,7 +18,7 @@ The six types have separate balances. MC and Outpatient do not share a pool. No 
 
 Working-day types count assigned schedule weekdays and exclude configured holidays. Calendar-day types count every day. Inpatient and Maternity default to calendar days. Admin can change these settings; submitted requests retain their original charged dates. Half-day AM/PM requests must use one date.
 
-MC, Inpatient and Outpatient default to requiring a private PDF/JPEG/PNG document, maximum 2 MB. Documents are served as authenticated downloads and never appear in the calendar or audit log. No malware scanning is included; use trusted supporting documents.
+MC, Inpatient and Outpatient default to requiring a private PDF/JPEG/PNG document, maximum 2 MB. MySQL must allow packets of at least 4 MB for the full upload limit; smaller server limits are detected before saving. Documents are served as authenticated downloads and never appear in the calendar or audit log. No malware scanning is included; use trusted supporting documents.
 
 Admin can assign active workspace users as leave managers per employee. This does not grant attendance administration. Admin/HR or an assigned manager can make a single final approval decision; there is no sequential two-stage approval. Self-approval is blocked by applicant user and linked employee identity. Admin/HR may submit on behalf of employees; another authorized approver must review those submissions. Staff who are managers use My leave from their staff portal.
 

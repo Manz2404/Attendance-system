@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { employees, schedules, workspaceMembers, users, workspaces, leaveSettings, leaveEntitlements, leaveRequests, leaveAttachments } from '@/db/schema';
 import { getCurrentUser } from '@/lib/auth';
@@ -91,6 +91,9 @@ export async function POST(request: Request) {
      if(!['application/pdf','image/png','image/jpeg'].includes(attachment.mime)||typeof attachment.data!=='string'||!/^[A-Za-z0-9+/]+={0,2}$/.test(attachment.data)) fail('Upload a PDF, PNG or JPEG document.');
      const b=Buffer.from(attachment.data,'base64');
      if(b.length>2*1024*1024||b.length<8) fail('Attachment must be at most 2 MB.');
+     const packetResult=await tx.execute(sql`SELECT @@max_allowed_packet AS packetSize`);
+     const packetRows=packetResult[0] as unknown as {packetSize:number}[];
+     if(attachment.data.length+16384>Number(packetRows[0].packetSize)) fail('This database permits a smaller attachment. Compress the document or ask your administrator to raise max_allowed_packet to at least 4 MB.');
      const valid=attachment.mime==='application/pdf'?b.subarray(0,5).toString()==='%PDF-':attachment.mime==='image/png'?b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):b[0]===255&&b[1]===216&&b[2]===255;
      if(!valid) fail('The file contents do not match its type.');
     }

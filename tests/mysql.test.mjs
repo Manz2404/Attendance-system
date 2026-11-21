@@ -709,6 +709,27 @@ test('MySQL migrations, controller transactions and local authentication', async
       globalThis.__authUser={userId:hr.user_id};const doc=await download();assert.equal(doc.status,200);assert.match(doc.headers.get('content-disposition'),/attachment/);
       assert.equal((await call({action:'reject',id:mc.id,note:''})).status,400);
       assert.equal((await call({action:'reject',id:mc.id,note:'Document needs correction'})).status,200);
+      const colleagueId=crypto.randomUUID();
+      await connection.execute('INSERT INTO hadir_employees (id,owner_id,code,name,department,schedule_id,active,is_sample,start_date,created_at) VALUES (?,?,?,?,?,?,1,0,?,?)',[colleagueId,owner,'LEAVE-TEST','Managed Colleague','Test',employee.scheduleId,'2026-01-01',new Date().toISOString()]);
+      globalThis.__authUser={userId:owner};
+      assert.equal((await call({action:'quota',year:2027,type:'annual',employeeId:colleagueId,days:2})).status,200);
+      assert.equal((await call({...apply,employeeId:colleagueId})).status,200);
+      const other=(await (await list()).json()).requests.find(r=>r.employeeId===colleagueId);
+      assert.equal((await call({action:'approve',id:other.id,note:''})).status,403);
+      globalThis.__authUser={userId:staff.user_id};
+      assert.equal((await call({action:'approve',id:other.id,note:''})).status,403);
+      assert.equal((await (await list()).json()).requests.some(r=>r.id===other.id),false);
+      globalThis.__authUser={userId:owner};
+      const managerPolicy={calendar:['annual','mc'],attachment:['mc'],holidays:[],managers:{[colleagueId]:staff.user_id}};
+      assert.equal((await call({action:'policy',policy:managerPolicy})).status,200);
+      globalThis.__authUser={userId:staff.user_id};
+      assert.equal((await (await list()).json()).requests.some(r=>r.id===other.id),true);
+      assert.equal((await call({action:'approve',id:other.id,note:'Manager approved'})).status,200);
+      globalThis.__authUser={userId:owner};
+      assert.equal((await call({action:'policy',policy:{...managerPolicy,managers:{}}})).status,200);
+      globalThis.__authUser={userId:staff.user_id};
+      assert.equal((await (await list()).json()).requests.some(r=>r.id===other.id),false);
+
     });
   } finally {
     await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb;
