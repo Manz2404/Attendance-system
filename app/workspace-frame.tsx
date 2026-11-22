@@ -33,8 +33,8 @@ export default function WorkspaceFrame({children,displayName,workspaceName,role,
     {role==='staff'?<a className={`nav-item ${activePage==='attendance'?'selected':''}`} aria-current={activePage==='attendance'?'page':undefined} href="/portal"><Clock3 size={20}/><span>My attendance</span></a>:items.filter(item=>role==='admin'||!['devices','kiosk'].includes(item.id)).map(item=><a key={item.id} className="nav-item" href={'/#'+item.id}><item.icon size={20}/><span>{item.label}</span></a>)}
     <a className={`nav-item ${activePage==='leave'?'selected':''}`} href="/leave" aria-current={activePage==='leave'?'page':undefined}><CalendarDays size={20}/><span>{role==='staff'?'My leave':'Leave'}</span></a>
     {role==='admin'&&<><a className="nav-item" href="/access"><ShieldCheck size={20}/><span>User access</span></a><a className="nav-item" href="/audit"><Activity size={20}/><span>Audit log</span></a></>}
-    <a className={`nav-item ${activePage==='profile'?'selected':''}`} href="/profile" aria-current={activePage==='profile'?'page':undefined}><UserRound size={20}/><span>{role==='admin'?'Staff job info':'My profile & job'}</span></a>
-    <a className={`nav-item ${activePage==='settings'?'selected':''}`} href="/settings" aria-current={activePage==='settings'?'page':undefined}><Settings size={20}/><span>My settings</span></a>
+    {role !== 'admin' && <><a className={`nav-item ${activePage==='profile'?'selected':''}`} href="/profile" aria-current={activePage==='profile'?'page':undefined}><UserRound size={20}/><span>{role==='admin'?'Staff job info':'My profile & job'}</span></a>
+    <a className={`nav-item ${activePage==='settings'?'selected':''}`} href="/settings" aria-current={activePage==='settings'?'page':undefined}><Settings size={20}/><span>My settings</span></a></>}
    </nav>
   </aside>
   <div className="main-shell">

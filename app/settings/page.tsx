@@ -10,6 +10,7 @@ export const dynamic='force-dynamic';
 export default async function SettingsPage() {
  const user=await getCurrentUser(); if(!user) redirect('/login');
  const access=await workspaceAccess(user); if(!access) redirect('/');
+ if(access.role==='admin') redirect('/#settings');
  const [workspace]=await getDb().select({name:workspaces.name}).from(workspaces).where(eq(workspaces.ownerId,access.ownerId));
  return <WorkspaceFrame displayName={user.fullName} workspaceName={workspace?.name||'My workspace'} role={access.role} activePage="settings"><div className="page-header"><div><h1>My settings</h1><p>Personalize your workspace. Your confirmed preferences follow your account across devices.</p></div></div><AppearanceSettings /></WorkspaceFrame>;
 }

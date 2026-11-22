@@ -754,6 +754,17 @@ test('MySQL migrations, controller transactions and local authentication', async
       assert.equal((await saveProfile({action:'personal',details:{title:'Director'}})).status,400);
       assert.equal((await saveProfile({action:'personal',details:{preferredName:'Updated'}})).status,200);
       data=await (await getProfile()).json();assert.equal(data.job.title,'Support Engineer');
+      globalThis.__authUser={userId:owner};
+      const current=(await get()).data.employees.find(e=>e.id===employee.id);
+      assert.equal(current.job.title,'Support Engineer');
+      const edit={...current,action:'employee',job:{title:'Senior Engineer'}};
+      assert.equal((await post(edit)).status,200);
+      globalThis.__authUser={userId:staff.user_id};
+      data=await (await getProfile()).json();assert.equal(data.job.title,'Senior Engineer');assert.equal(data.personal.preferredName,'Updated');
+      globalThis.__authUser={userId:hr.user_id};assert.equal((await post(edit)).status,403);
+      globalThis.__authUser={userId:owner};
+      assert.equal((await post({...edit,name:'Should not save',job:{probationEnd:'2027-02-30'}})).status,400);
+      assert.equal((await get()).data.employees.find(e=>e.id===employee.id).name,current.name);
     });
   } finally {
     await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb;
