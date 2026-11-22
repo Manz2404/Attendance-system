@@ -95,7 +95,7 @@ test('MySQL migrations, controller transactions and local authentication', async
       await connection.execute('INSERT INTO hadir_schema_migrations VALUES (?, ?, ?)', ['001-initial', createHash('sha256').update(initial).digest('hex'), new Date().toISOString()]);
       await createAdmin(connection, { username: 'legacy', name: 'Legacy Admin', password });
       assert.equal(await migrate(connection), true); assert.equal(await migrate(connection), false);
-      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 23);
+      const [tables] = await connection.query('SHOW TABLES'); assert.equal(tables.length, 24);
       const [[legacy]] = await connection.execute('SELECT name FROM hadir_users WHERE username = ?', ['legacy']); assert.equal(legacy.name, 'Legacy Admin');
     });
     await t.test('administrator credentials are hashed and existing users are protected', async () => {
@@ -730,6 +730,30 @@ test('MySQL migrations, controller transactions and local authentication', async
       globalThis.__authUser={userId:staff.user_id};
       assert.equal((await (await list()).json()).requests.some(r=>r.id===other.id),false);
 
+    });
+    await t.test('staff profiles isolate accounts and restrict job edits to Admin', async () => {
+      const profilePath=resolve(runtime,'profile.mjs');
+      await build({...shared,entryPoints:['app/api/profile/route.ts'],outfile:profilePath,plugins:[authMock]});
+      const profile=await import(pathToFileURL(profilePath));
+      const getProfile=(id=employee.id)=>profile.GET(new Request('http://127.0.0.1:3000/api/profile?employeeId='+id));
+      const saveProfile=(body,origin='http://127.0.0.1:3000')=>profile.POST(new Request('http://127.0.0.1:3000/api/profile',{method:'POST',headers:{'Content-Type':'application/json',origin},body:JSON.stringify(body)}));
+      globalThis.__authUser=null; assert.equal((await getProfile()).status,401);
+      const [[staff]]=await connection.execute('SELECT user_id FROM hadir_workspace_members WHERE employee_id=?',[employee.id]);
+      const [[hr]]=await connection.execute("SELECT user_id FROM hadir_workspace_members WHERE owner_id=? AND role='hr' LIMIT 1",[owner]);
+      const job={action:'job',employeeId:employee.id,details:{title:'Support Engineer',employmentType:'Permanent'}};
+      globalThis.__authUser={userId:staff.user_id};
+      assert.equal((await saveProfile(job)).status,403);
+      assert.equal((await saveProfile({action:'personal',details:{email:'invalid'}})).status,400);
+      assert.equal((await saveProfile({action:'personal',details:{preferredName:'Arman'}},'https://evil.example')).status,403);
+      assert.equal((await saveProfile({action:'personal',employeeId:crypto.randomUUID(),details:{preferredName:'Arman',email:'staff@example.com'}})).status,200);
+      let data=await (await getProfile(crypto.randomUUID())).json(); assert.equal(data.employee.id,employee.id);assert.equal(data.personal.preferredName,'Arman');
+      globalThis.__authUser={userId:hr.user_id}; assert.equal((await saveProfile(job)).status,403);
+      globalThis.__authUser={userId:second}; assert.equal((await saveProfile(job)).status,404);assert.equal((await getProfile()).status,404);
+      globalThis.__authUser={userId:owner};assert.equal((await saveProfile(job)).status,200);
+      globalThis.__authUser={userId:staff.user_id};data=await (await getProfile()).json();assert.equal(data.job.title,'Support Engineer');assert.equal(data.personal.preferredName,'Arman');
+      assert.equal((await saveProfile({action:'personal',details:{title:'Director'}})).status,400);
+      assert.equal((await saveProfile({action:'personal',details:{preferredName:'Updated'}})).status,200);
+      data=await (await getProfile()).json();assert.equal(data.job.title,'Support Engineer');
     });
   } finally {
     await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb;

@@ -148,3 +148,9 @@ export const leaveRequests = mysqlTable('hadir_leave_requests', {
 export const leaveAttachments = mysqlTable('hadir_leave_attachments', {
  requestId: varchar('request_id', { length: 36 }).primaryKey(), mime: varchar('mime', { length: 40 }).notNull(), data: leaveLongText('data').notNull(),
 });
+
+export const staffProfiles = mysqlTable('hadir_staff_profiles', {
+ employeeId: varchar('employee_id',{length:36}).primaryKey().references(()=>employees.id,{onDelete:'cascade'}),
+ ownerId: varchar('owner_id',{length:36}).notNull().references(()=>workspaces.ownerId),
+ personal: text('personal').notNull(), job: text('job').notNull(), updatedAt: instant('updated_at').notNull(),
+},t=>[index('hadir_staff_profiles_owner_idx').on(t.ownerId)]);
