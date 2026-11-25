@@ -7,13 +7,13 @@ import { workspaceAccess } from '@/lib/workspace-access';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
  const user = await getCurrentUser();
  if (!user) return json({ error: 'Please sign in.' }, 401);
  const access = await workspaceAccess(user);
  if (access?.role !== 'staff' || !access.employeeId) return json({ error: 'Active staff access required.' }, 403);
  let range;
- try { range = attendanceRange(request ? new URL(request.url).searchParams : undefined); } catch(error) { return json({error:error instanceof Error ? error.message : 'Invalid dates.'},400); }
+ try { range = attendanceRange(new URL(request.url).searchParams); } catch(error) { return json({error:error instanceof Error ? error.message : 'Invalid dates.'},400); }
  const db = getDb();
  // Identity comes only from the authenticated membership, never a query parameter.
  const [employee] = await db.select({ id: employees.id, name: employees.name, code: employees.code, department: employees.department, scheduleId: employees.scheduleId, startDate: employees.startDate, endDate: employees.endDate, active: employees.active, isSample: employees.isSample }).from(employees).where(and(eq(employees.ownerId, access.ownerId), eq(employees.id, access.employeeId))).limit(1);

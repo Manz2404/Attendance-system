@@ -69,7 +69,7 @@ test('MySQL migrations, controller transactions and local authentication', async
     const response = await route.POST(new Request('http://127.0.0.1:3000/api/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }));
     return { status: response.status, data: await response.json() };
   };
-  const get = async () => { const response = await route.GET(); return { status: response.status, data: await response.json() }; };
+  const get = async () => { const response = await route.GET(new Request('http://127.0.0.1:3000/api/workspace')); return { status: response.status, data: await response.json() }; };
   const signIn = async (username, password, headers = {}) => {
     const response = await login.POST(new Request('http://127.0.0.1:3000/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ username, password }) }));
     return { status: response.status, data: await response.json() };
@@ -577,7 +577,7 @@ test('MySQL migrations, controller transactions and local authentication', async
         const response = body === undefined ? await members.GET() : await members.POST(new Request('http://127.0.0.1:3000/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }));
         return { status: response.status, data: await response.json() };
       };
-      const portalCall = async () => { const r = await portal.GET(); return { status: r.status, data: await r.json() }; };
+      const portalCall = async () => { const r = await portal.GET(new Request('http://127.0.0.1:3000/api/portal')); return { status: r.status, data: await r.json() }; };
       globalThis.__authUser = null;
       assert.equal((await memberCall()).status, 401); assert.equal((await portalCall()).status, 401);
       globalThis.__authUser = { userId: owner };
@@ -777,7 +777,7 @@ test('MySQL migrations, controller transactions and local authentication', async
       assert.equal((await route.GET(new Request('http://127.0.0.1:3000/api/workspace?from=bad'))).status,400);
       const [[staff]]=await connection.execute('SELECT user_id FROM hadir_workspace_members WHERE employee_id=?',[employee.id]);
       globalThis.__authUser={userId:staff.user_id};
-      assert.equal((await (await portal.GET()).json()).punches.some(p=>p.id===oldId),false);
+      assert.equal((await (await portal.GET(new Request('http://127.0.0.1:3000/api/portal'))).json()).punches.some(p=>p.id===oldId),false);
       const ownHistory=await (await portal.GET(new Request('http://127.0.0.1:3000/api/portal'+query))).json();
       assert.equal(ownHistory.punches.some(p=>p.id===oldId),true);
       assert.ok(ownHistory.punches.every(p=>p.employeeId===employee.id));
