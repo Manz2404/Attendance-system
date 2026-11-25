@@ -1,9 +1,10 @@
+import { attendanceRange } from '@/lib/attendance-range';
 import { validateProfile } from '@/lib/staff-profile';
 import { writeAudit } from '@/lib/audit';
 import { workspaceAccess, canManageAttendance, canWriteWorkspace } from '@/lib/workspace-access';
 import { normalizePhone } from '@/lib/whatsapp.mjs';
 import { normalizeProfilePhoto } from '@/lib/profile-photo.mjs';
-import { and, eq, inArray, asc } from 'drizzle-orm';
+import { and, eq, inArray, asc, gte, lt } from 'drizzle-orm';
 import { getDb, type Connection } from '@/db';
 import { workspaces, employees, employeePhotos, employeeContacts, staffProfiles, schedules, devices, punches, employeePins, employeeFaces, kioskAttempts } from '@/db/schema';
 import { hashPin, validPin, hashToken } from '@/lib/password.mjs';
@@ -29,17 +30,19 @@ function timeField(value: unknown, label: string) { const t = field(value, label
 function numberField(value: unknown, label: string, max: number) { if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > max) throw new InputError(`${label} must be between 0 and ${max}.`); return value; }
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 
-export async function GET() {
+export async function GET(request?: Request) {
   const user = await getCurrentUser(); if (!user) return json({ error: 'Please sign in to continue.' }, 401);
   try {
     const access = await workspaceAccess(user);
     if (!canManageAttendance(access)) return json({ error: 'You do not have access to workspace records.' }, 403);
+    let range;
+    try { range = attendanceRange(request ? new URL(request.url).searchParams : undefined); } catch(error) { return json({error:error instanceof Error ? error.message : 'Invalid dates.'},400); }
     const db = getDb(), owner = access!.ownerId;
     const [ws, staff, shifts, logs, hardware, pins, faces, photos, contacts, profiles] = await Promise.all([
       db.select().from(workspaces).where(eq(workspaces.ownerId, owner)).limit(1),
       db.select().from(employees).where(eq(employees.ownerId, owner)).orderBy(asc(employees.name)),
       db.select().from(schedules).where(eq(schedules.ownerId, owner)),
-      db.select().from(punches).where(eq(punches.ownerId, owner)).orderBy(asc(punches.timestamp)),
+      db.select().from(punches).where(and(eq(punches.ownerId, owner),gte(punches.timestamp,range.from),lt(punches.timestamp,range.until))).orderBy(asc(punches.timestamp)),
       db.select().from(devices).where(eq(devices.ownerId, owner)),
       db.select({ employeeId: employeePins.employeeId }).from(employeePins).where(eq(employeePins.ownerId, owner)),
       db.select({ employeeId: employeeFaces.employeeId }).from(employeeFaces).where(eq(employeeFaces.ownerId, owner)),

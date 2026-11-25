@@ -1,21 +1,110 @@
 'use client';
-import {useEffect,useState,type FormEvent} from 'react';
-import {personalFields,jobFields} from '@/lib/staff-profile';
+
+import { useEffect, useState, type FormEvent } from 'react';
+import { personalFields, jobFields } from '@/lib/staff-profile';
 import ProfilePhotoField from '../profile-photo-field';
-type Data={role:string;employees:{id:string;name:string}[];employee:{id:string;name:string;code:string;department:string;startDate:string;endDate:string|null;active:boolean}|null;personal:Record<string,string>;job:Record<string,string>;photo:string|null;schedule:string};
-export default function ProfileEditor(){
- const [data,setData]=useState<Data|null>(null),[id,setId]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[photoBusy,setPhotoBusy]=useState(false),[version,setVersion]=useState(0);
- useEffect(()=>{const controller=new AbortController();setData(null);setError('');fetch('/api/profile'+(id?'?employeeId='+encodeURIComponent(id):''),{cache:'no-store',signal:controller.signal}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setData(d);}).catch(e=>{if(!controller.signal.aborted)setError(e.message);});return()=>controller.abort();},[id,version]);
- async function save(e:FormEvent<HTMLFormElement>,action:string){e.preventDefault();const f=new FormData(e.currentTarget);setBusy(true);setError('');setMessage('');try{const fields=action==='job'?jobFields:personalFields;const details=Object.fromEntries(Object.keys(fields).map(k=>[k,f.get(k)||'']));const r=await fetch('/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,employeeId:data?.employee?.id,details,photo:f.get('profilePhoto')})});const d=await r.json();if(!r.ok)throw new Error(d.error);setMessage('Changes saved.');setVersion(v=>v+1);}catch(e){setError(e instanceof Error?e.message:'Could not save.');}finally{setBusy(false);}}
- return <div className="profile-page"><div className="page-header"><div><div className="eyebrow">PEOPLE & WORK</div><h1>{data?.role==='admin'?'Staff job information':'My profile'}</h1><p>{data?.role==='admin'?'Maintain employment details for your team.':'Keep your personal details up to date and view your job information.'}</p></div></div>
- {error&&<p className="error-banner" role="alert">{error} <button className="text-button" onClick={()=>setVersion(v=>v+1)}>Retry</button></p>}{message&&<p className="info-note" role="status">{message}</p>}
- {!data&&!error&&<p role="status">Loading profile…</p>}
- {data?.role==='admin'&&<label className="profile-picker">Employee<select disabled={busy} value={id||data.employee?.id||''} onChange={e=>{setId(e.target.value);setMessage('');}}>{data.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>}
- {data&&!data.employee&&<section className="card profile-card">No linked employee found. Ask Admin to link your account to an employee record.</section>}
- {data?.employee&&<>
- {data.role!=='admin'&&<section className="card profile-card"><h2>Personal details</h2><p>Your official employee name is managed by Admin.</p><form onSubmit={e=>save(e,'personal')}><fieldset disabled={busy}><ProfilePhotoField key={version} initialPhoto={data.photo} disabled={busy} onBusy={setPhotoBusy}/><div className="profile-grid">{Object.entries(personalFields).map(([key,label])=><label key={key}>{label}<input name={key} type={key==='email'?'email':/phone/i.test(key)?'tel':'text'} maxLength={key==='address'?500:120} defaultValue={data.personal[key]||''}/></label>)}</div><div className="profile-footer"><button className="button primary" disabled={busy||photoBusy}>{busy?'Saving…':'Save profile'}</button></div></fieldset></form></section>}
- <section className="card profile-card"><h2>Job information</h2><p>{data.role==='admin'?'Staff can view these details, but only Admin can edit them.':'Managed by Admin. Contact Admin if these details need correcting.'}</p><dl className="profile-grid profile-facts">{Object.entries({'Employee name':data.employee.name,'Employee code':data.employee.code,Department:data.employee.department,'Start date':data.employee.startDate,'End date':data.employee.endDate||'—',Schedule:data.schedule,Status:data.employee.active?'Active':'Inactive'}).map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
- {data.role==='admin'?<form onSubmit={e=>save(e,'job')}><fieldset disabled={busy}><div className="profile-grid">{Object.entries(jobFields).map(([key,label])=><label key={key}>{label}<input name={key} type={key==='probationEnd'?'date':key==='workEmail'?'email':'text'} maxLength={120} defaultValue={data.job[key]||''}/></label>)}</div><p className="muted">Edit employee code, department, dates and schedule in Employees.</p><div className="profile-footer"><button className="button primary" disabled={busy}>{busy?'Saving…':'Save job information'}</button></div></fieldset></form>:<dl className="profile-grid profile-facts">{Object.entries(jobFields).map(([key,label])=><div key={key}><dt>{label}</dt><dd>{data.job[key]||'Not set'}</dd></div>)}</dl>}
- </section></>}
- </div>;
+
+type Profile = {
+  employee: { id: string; name: string; code: string; department: string; startDate: string; endDate: string | null; active: boolean } | null;
+  personal: Record<string, string>;
+  job: Record<string, string>;
+  photo: string | null;
+  schedule: string;
+};
+
+function Facts({ values }: { values: Record<string, string> }) {
+  return <dl className="profile-grid profile-facts">
+    {Object.entries(values).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+  </dl>;
+}
+
+export default function ProfileEditor() {
+  const [data, setData] = useState<Profile | null>(null);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setData(null);
+    setError('');
+    async function load() {
+      try {
+        const response = await fetch('/api/profile', { cache: 'no-store', signal: controller.signal });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not load your profile.');
+        if (!controller.signal.aborted) setData(result);
+      } catch (error) {
+        if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Could not load your profile.');
+      }
+    }
+    void load();
+    return () => controller.abort();
+  }, [version]);
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const details = Object.fromEntries(Object.keys(personalFields).map(key => [key, form.get(key) || '']));
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'personal', details, photo: form.get('profilePhoto') }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not save your profile.');
+      setMessage('Changes saved.');
+      setVersion(value => value + 1);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not save your profile.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <div className="profile-page">
+    <div className="page-header"><div>
+      <div className="eyebrow">PEOPLE & WORK</div>
+      <h1>My profile</h1>
+      <p>Keep your personal details up to date and view your job information.</p>
+    </div></div>
+    {error && <p className="error-banner" role="alert">{error} <button className="text-button" onClick={() => setVersion(value => value + 1)}>Reload profile</button></p>}
+    {message && <p className="info-note" role="status">{message}</p>}
+    {!data && !error && <p role="status">Loading profile…</p>}
+    {data && !data.employee && <section className="card profile-card">No linked employee found. Ask Admin to link your account to an employee record.</section>}
+    {data?.employee && <>
+      <section className="card profile-card">
+        <h2>Personal details</h2>
+        <p>Your official employee name is managed by Admin. Your personal contact number is separate from the work WhatsApp number maintained in Employees.</p>
+        <form onSubmit={save}>
+          <fieldset disabled={busy}>
+            <ProfilePhotoField key={version} initialPhoto={data.photo} disabled={busy} onBusy={setPhotoBusy} />
+            <div className="profile-grid">
+              {Object.entries(personalFields).map(([key, label]) => <label key={key}>{label}
+                <input name={key} type={key === 'email' ? 'email' : /phone/i.test(key) ? 'tel' : 'text'} maxLength={key === 'address' ? 500 : 120} defaultValue={data.personal[key] || ''} />
+              </label>)}
+            </div>
+            <div className="profile-footer"><button className="button primary" disabled={busy || photoBusy}>{busy ? 'Saving…' : 'Save profile'}</button></div>
+          </fieldset>
+        </form>
+      </section>
+      <section className="card profile-card">
+        <h2>Job information</h2>
+        <p>Managed by Admin. Contact Admin if these details need correcting.</p>
+        <Facts values={{
+          'Employee name': data.employee.name, 'Employee code': data.employee.code,
+          Department: data.employee.department, 'Start date': data.employee.startDate,
+          'End date': data.employee.endDate || '—', Schedule: data.schedule,
+          Status: data.employee.active ? 'Active' : 'Inactive',
+        }} />
+        <Facts values={Object.fromEntries(Object.entries(jobFields).map(([key, label]) => [label, data.job[key] || 'Not set']))} />
+      </section>
+    </>}
+  </div>;
 }

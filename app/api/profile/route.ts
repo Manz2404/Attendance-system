@@ -1,3 +1,4 @@
+import { logServerError } from '@/lib/server-error';
 import {and,eq} from 'drizzle-orm';
 import {getDb} from '@/db';
 import {employees,staffProfiles,employeePhotos,schedules} from '@/db/schema';
@@ -23,7 +24,7 @@ export async function GET(request:Request) {
   const [photo]=await db.select().from(employeePhotos).where(and(eq(employeePhotos.employeeId,id),eq(employeePhotos.ownerId,access.ownerId)));
   const [schedule]=await db.select({name:schedules.name}).from(schedules).where(and(eq(schedules.id,employee.scheduleId),eq(schedules.ownerId,access.ownerId)));
   return json({role:access.role,employees:list,employee,personal:profile?JSON.parse(profile.personal):{},job:profile?JSON.parse(profile.job):{},photo:photo?.photo||null,schedule:schedule?.name||'Not assigned'});
- }catch{return json({error:'Could not load profile. Check that database migrations are up to date.'},500);}
+ }catch(error){logServerError('profile.load',error);return json({error:'Could not load your profile. Please retry or contact Admin.'},500);}
 }
 export async function POST(request:Request) {
  try {
@@ -47,5 +48,5 @@ export async function POST(request:Request) {
    await writeAudit(tx,access.ownerId,user.userId,job?'job-update':'profile-update',id,job?'Updated job information.':'Updated personal profile.');
   });
   return json({ok:true});
- }catch(e){return json({error:e instanceof RequestError?e.message:'Could not save details. Please retry.'},e instanceof RequestError?e.status:500);}
+ }catch(e){if(!(e instanceof RequestError))logServerError('profile.save',e);return json({error:e instanceof RequestError?e.message:'Could not save details. Please retry.'},e instanceof RequestError?e.status:500);}
 }

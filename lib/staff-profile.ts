@@ -1,4 +1,4 @@
-export const personalFields = {preferredName:'Preferred name',email:'Personal email',phone:'Contact number',address:'Home address',emergencyName:'Emergency contact name',emergencyPhone:'Emergency contact number'};
+export const personalFields = {preferredName:'Preferred name',email:'Personal email',phone:'Personal contact number',address:'Home address',emergencyName:'Emergency contact name',emergencyPhone:'Emergency contact number'};
 export const jobFields = {title:'Job title',employmentType:'Employment type',location:'Work location',manager:'Reporting manager',workEmail:'Work email',probationEnd:'Probation end date'};
 export function validateProfile(value:unknown, job=false):Record<string,string> {
  if(!value||typeof value!=='object'||Array.isArray(value)) throw new Error('Invalid details.');

@@ -766,6 +766,25 @@ test('MySQL migrations, controller transactions and local authentication', async
       assert.equal((await post({...edit,name:'Should not save',job:{probationEnd:'2027-02-30'}})).status,400);
       assert.equal((await get()).data.employees.find(e=>e.id===employee.id).name,current.name);
     });
+    await t.test('attendance APIs bound history and preserve explicit historical reads', async () => {
+      const oldId=crypto.randomUUID();
+      await connection.execute("INSERT INTO hadir_punches (id,owner_id,employee_id,timestamp,kind,source,note,dedupe_key,created_at) VALUES (?,?,?,?,?,?,?,?,?)",[oldId,owner,employee.id,'2020-01-15T01:00:00.000Z','IN','manual','','range-test-'+oldId,new Date().toISOString()]);
+      globalThis.__authUser={userId:owner};
+      assert.equal((await get()).data.punches.some(p=>p.id===oldId),false);
+      const query='?from=2020-01-15&to=2020-01-15';
+      const historical=await route.GET(new Request('http://127.0.0.1:3000/api/workspace'+query));
+      assert.equal(historical.status,200);assert.equal((await historical.json()).punches.some(p=>p.id===oldId),true);
+      assert.equal((await route.GET(new Request('http://127.0.0.1:3000/api/workspace?from=bad'))).status,400);
+      const [[staff]]=await connection.execute('SELECT user_id FROM hadir_workspace_members WHERE employee_id=?',[employee.id]);
+      globalThis.__authUser={userId:staff.user_id};
+      assert.equal((await (await portal.GET()).json()).punches.some(p=>p.id===oldId),false);
+      const ownHistory=await (await portal.GET(new Request('http://127.0.0.1:3000/api/portal'+query))).json();
+      assert.equal(ownHistory.punches.some(p=>p.id===oldId),true);
+      assert.ok(ownHistory.punches.every(p=>p.employeeId===employee.id));
+      assert.equal((await portal.GET(new Request('http://127.0.0.1:3000/api/portal?from=bad'))).status,400);
+      globalThis.__authUser={userId:second};
+      assert.equal((await (await route.GET(new Request('http://127.0.0.1:3000/api/workspace'+query))).json()).punches.some(p=>p.id===oldId),false);
+    });
   } finally {
     await connection.end(); await globalThis.hadirDb?.$client.end(); delete globalThis.hadirDb;
     delete globalThis.__faceScan; delete globalThis.__faceReady;

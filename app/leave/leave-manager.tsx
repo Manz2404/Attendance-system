@@ -44,17 +44,237 @@ export default function LeaveManager() {
  const filtered=requests.filter(r=>(filter==='all'||r.status===filter));
  const monthStart=`${year}-${String(month).padStart(2,'0')}-01`,offset=new Date(monthStart+'T00:00:00Z').getUTCDay(),daysInMonth=new Date(Date.UTC(year,month,0)).getUTCDate();
  return <div className="leave-page">
-  <section className="page-header leave-hero"><div><div className="eyebrow">YOUR ATTENDANCE WORKSPACE</div><h1>{data?.role==='staff'?'My leave':'Leave management'}</h1><p>{data?.role==='staff'?'Apply for time off, check your balance and track approval status.':"Manage requests, balances and your team's time off."}</p></div><button className="button primary" disabled={!data||busy} onClick={()=>{setError('');setApply(true);}}><Plus size={18}/>Apply for leave</button></section>
-  {error&&<div className="error-banner" role="alert">{error} <button className="text-button" onClick={()=>load().then(()=>setError('')).catch(e=>setError(e.message))}>Retry</button></div>}
+  <section className="page-header leave-hero">
+<div>
+<div className="eyebrow">YOUR ATTENDANCE WORKSPACE</div>
+<h1>{data?.role==='staff'?'My leave':'Leave management'}</h1>
+<p>{data?.role==='staff'?'Apply for time off, check your balance and track approval status.':"Manage requests, balances and your team's time off."}</p>
+</div>
+<button className="button primary" disabled={!data||busy} onClick={()=>{setError('');setApply(true);}}>
+<Plus size={18}/>Apply for leave</button>
+</section>
+  {error&&<div className="error-banner" role="alert">{error} <button className="text-button" onClick={()=>load().then(()=>setError('')).catch(e=>setError(e.message))}>Retry</button>
+</div>}
   {message&&<p className="info-note" role="status">{message}</p>}
-  <div className="leave-toolbar"><div className="leave-tabs" role="tablist" aria-label="Leave sections">{[['requests','Requests'],['calendar','Calendar'],...(data?.role==='admin'?[['settings','Entitlements & policy']]:[])].map(([key,label])=><button role="tab" aria-selected={tab===key} key={key} className={tab===key?'active':''} onClick={()=>setTab(key)}>{label}</button>)}</div><label>Leave year<select disabled={busy} value={year} onChange={e=>setYear(Number(e.target.value))}>{Array.from({length:7},(_,i)=>currentYear-3+i).map(y=><option key={y}>{y}</option>)}</select></label></div>
+  <div className="leave-toolbar">
+<div className="leave-tabs" role="tablist" aria-label="Leave sections">{[['requests','Requests'],['calendar','Calendar'],...(data?.role==='admin'?[['settings','Entitlements & policy']]:[])].map(([key,label])=>
+<button role="tab" aria-selected={tab===key} key={key} className={tab===key?'active':''} onClick={()=>setTab(key)}>{label}</button>)}</div>
+<label>Leave year<select disabled={busy} value={year} onChange={e=>setYear(Number(e.target.value))}>{Array.from({length:7},(_,i)=>currentYear-3+i).map(y=>
+<option key={y}>{y}</option>)}</select>
+</label>
+</div>
   {!data?<section className="card empty-state">Loading leave workspace…</section>:<>
-  {tab!=='settings'&&<section className="leave-balance-section"><div className="card-heading"><div><h2>Leave balances</h2><p>Available balance reserves pending requests.</p></div><label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)}>{data.employees.map(e=><option key={e.id} value={e.id}>{e.name}{!e.active?' (inactive)':''}</option>)}</select></label></div><div className="leave-balances">{leaveTypes.map(type=>{const quota=data.quotas.find(q=>q.employeeId===employee&&q.type===type);const b=balance(requests,employee,type,year,quota?.units||0);return <section className="card leave-balance" key={type}><span>{leaveLabels[type]}</span><h2>{quota?b.available:'—'} <small>days available</small></h2><p>{quota?`${b.entitlement} allocated · ${b.used} used · ${b.pending} pending`:'Admin has not set this entitlement.'}</p></section>;})}</div></section>}
-  {apply&&<LeaveDialog label="Apply for leave" busy={busy} onClose={()=>setApply(false)}><section className="card leave-form"><div className="card-heading"><div><h2>Apply for leave</h2><p>Submission reserves your balance until a decision is made.</p></div><button className="button secondary" disabled={busy} onClick={()=>setApply(false)}>Close</button></div><div aria-live="polite">{error&&<p className="error-banner" role="alert">{error}</p>}</div><form onSubmit={e=>{submit(e).catch(()=>setError('Could not read the attachment. Please choose it again.'));}}><fieldset disabled={busy}><div className="leave-form-grid"><label>Employee<select name="employeeId" defaultValue={data.employeeId||employee} required>{data.employees.filter(e=>e.active&&(data.role!=='staff'||e.id===data.employeeId)).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label><label>Leave type<select name="type">{leaveTypes.map(t=><option key={t} value={t}>{leaveLabels[t]}{data.policy.attachment.includes(t)?' · document required':''}</option>)}</select></label><label>From<input type="date" name="start" min={`${year}-01-01`} max={`${year}-12-31`} required/></label><label>To<input type="date" name="end" min={`${year}-01-01`} max={`${year}-12-31`} required/></label><label>Duration<select name="part"><option value="full">Full day(s)</option><option value="am">Half day · morning</option><option value="pm">Half day · afternoon</option></select></label><label>Supporting document<input name="file" type="file" accept="application/pdf,image/jpeg,image/png"/><small>PDF, JPG or PNG · maximum 2 MB · private to applicant and approvers</small></label></div><label>Reason<textarea name="reason" required maxLength={1000} rows={3}/></label><p className="muted">Working-day leave uses the employee schedule and configured holidays. Calendar-day types: {data.policy.calendar.map(t=>leaveLabels[t]).join(', ')||'none'}. Requests crossing years must be submitted separately.</p><div className="leave-form-footer"><button type="button" className="button secondary" disabled={busy} onClick={()=>setApply(false)}>Cancel</button><button className="button primary" disabled={busy}>{busy?'Saving…':'Submit request'}</button></div></fieldset></form></section></LeaveDialog>}
-  {tab==='requests'&&<section className="card"><div className="card-heading"><div><h2>Leave requests</h2><p>Staff see their own requests. Assigned managers also see their team.</p></div><label>Status<select value={filter} onChange={e=>setFilter(e.target.value)}>{['all','pending','approved','rejected','cancel_requested','cancelled'].map(s=><option key={s} value={s}>{s.replaceAll('_',' ')}</option>)}</select></label></div><div className="table-scroll"><table><thead><tr><th>Employee / type</th><th>Dates</th><th>Days</th><th>Status</th><th>Details</th><th>Actions</th></tr></thead><tbody>{filtered.slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(r=><tr key={r.id}><td><strong>{data.employees.find(e=>e.id===r.employeeId)?.name||'Employee'}</strong><br/>{leaveLabels[r.type]}</td><td>{r.days[0]?.date} → {r.days.at(-1)?.date}{r.days.length===1&&r.days[0].part!=='full'&&<small> · {r.days[0].part.toUpperCase()}</small>}</td><td>{units(r.days)/2}</td><td><span className={'leave-status '+r.status}>{r.status.replaceAll('_',' ')}</span></td><td><details><summary>View details</summary><p>{r.reason}</p>{r.reviewNote&&<p>Reviewer: {r.reviewNote}</p>}{r.attachment&&<a className="button secondary" href={'/api/leave/attachment?id='+r.id}><Download size={14}/>Document</a>}</details></td><td><div className="leave-actions">{r.canReview&&['pending','cancel_requested'].includes(r.status)&&<><button className="button secondary" disabled={busy} onClick={()=>{setNote('');setReview({id:r.id,action:r.status==='pending'?'approve':'approve-cancel'});}}><Check size={14}/>Approve{r.status==='cancel_requested'?' cancellation':''}</button><button className="button danger-outline" disabled={busy} onClick={()=>{setNote('');setReview({id:r.id,action:r.status==='pending'?'reject':'reject-cancel'});}}><X size={14}/>Reject</button></>}{r.own&&['pending','approved'].includes(r.status)&&<button className="button secondary" disabled={busy} onClick={()=>{setNote('');setReview({id:r.id,action:'cancel'});}}>{r.status==='approved'?'Request cancellation':'Cancel request'}</button>}</div></td></tr>)}</tbody></table>{!filtered.length&&<div className="empty-state"><CalendarDays size={28}/><h3>No requests here yet</h3><p>Submitted leave will appear here with its approval status.</p></div>}</div></section>}
-  {review&&<LeaveDialog label="Review leave request" busy={busy} onClose={()=>setReview(null)}><section className="card leave-form"><h2>Confirm {review.action.replaceAll('-',' ')}</h2><p>{review.action==='cancel'?'Pending leave is cancelled immediately. Approved leave needs cancellation approval before its balance is restored.':'This decision updates the leave balance. You cannot approve your own request.'}</p><div aria-live="polite">{error&&<p className="error-banner" role="alert">{error}</p>}</div><form onSubmit={async e=>{e.preventDefault();if(await save({...review,note}))setReview(null);}}><label>Review note{review.action.startsWith('reject')?' (required)':''}<textarea maxLength={1000} required={review.action.startsWith('reject')} value={note} onChange={e=>setNote(e.target.value)}/></label><div className="leave-actions"><button className="button primary" disabled={busy}>Confirm</button><button type="button" className="button secondary" disabled={busy} onClick={()=>setReview(null)}>Back</button></div></form></section></LeaveDialog>}
-  {tab==='calendar'&&<section className="card"><div className="card-heading"><div><h2>Team leave calendar</h2><p>Approved leave only. Medical documents and reasons stay in request details.</p></div><label>Month<select value={month} onChange={e=>setMonth(Number(e.target.value))}>{Array.from({length:12},(_,i)=><option key={i} value={i+1}>{new Date(2026,i,1).toLocaleString('en',{month:'long'})}</option>)}</select></label></div><div className="leave-calendar-wrap"><div className="leave-calendar">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div className="leave-weekday" key={d}>{d}</div>)}{Array.from({length:offset},(_,i)=><div key={'blank'+i} className="leave-day blank"/>)}{Array.from({length:daysInMonth},(_,i)=>{const date=`${year}-${String(month).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`;return <div key={date} className="leave-day"><strong>{i+1}</strong>{data.policy.holidays.includes(date)&&<small>Public holiday</small>}{requests.filter(r=>['approved','cancel_requested'].includes(r.status)&&r.days.some(d=>d.date===date)).map(r=><span className="leave-calendar-event" key={r.id}>{data.employees.find(e=>e.id===r.employeeId)?.name}<small>{r.days.find(d=>d.date===date)?.part==='full'?'Full day':r.days.find(d=>d.date===date)?.part.toUpperCase()}</small></span>)}</div>;})}</div></div></section>}
-  {tab==='settings'&&data.role==='admin'&&policy&&<div className="leave-settings"><section className="card leave-form"><h2>Set entitlements · {year}</h2><p>Apply an allocation to all active staff, or set a different allowance for one employee. This replaces the allocation; it does not add days.</p><form onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);await save({action:'quota',year,employeeId:f.get('employeeId'),type:f.get('type'),days:f.get('days')});}}><fieldset disabled={busy}><div className="leave-form-grid"><label>Employee<select name="employeeId"><option value="all">All active staff</option>{data.employees.filter(e=>e.active).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label><label>Leave type<select name="type">{leaveTypes.map(t=><option key={t} value={t}>{leaveLabels[t]}</option>)}</select></label><label>Allocated days<input name="days" type="number" min="0" max="366" step="0.5" required/></label></div><button className="button primary">Save entitlement</button></fieldset></form><p className="muted">New staff need an allocation. Balances are separate for each year; there is no automatic accrual, carry-forward or prorating.</p></section><section className="card leave-form"><h2><Settings2 size={19}/> Leave policy</h2><p>Configure your company policy. MC and Outpatient are separate balances in this module.</p><form onSubmit={async e=>{e.preventDefault();await save({action:'policy',policy:{...policy,holidays:policy.holidays.map(d=>d.trim()).filter(Boolean)}});}}><fieldset disabled={busy}><div className="table-scroll"><table><thead><tr><th>Leave type</th><th>Count calendar days</th><th>Require document</th></tr></thead><tbody>{leaveTypes.map(t=><tr key={t}><td>{leaveLabels[t]}</td><td><input aria-label={'Calendar days for '+leaveLabels[t]} type="checkbox" checked={policy.calendar.includes(t)} onChange={e=>setPolicy({...policy,calendar:e.target.checked?[...policy.calendar,t]:policy.calendar.filter(x=>x!==t)})}/></td><td><input aria-label={'Document required for '+leaveLabels[t]} type="checkbox" checked={policy.attachment.includes(t)} onChange={e=>setPolicy({...policy,attachment:e.target.checked?[...policy.attachment,t]:policy.attachment.filter(x=>x!==t)})}/></td></tr>)}</tbody></table></div><label>Public holidays (one date per line, YYYY-MM-DD)<textarea rows={5} value={policy.holidays.join('\n')} onChange={e=>setPolicy({...policy,holidays:e.target.value.split('\n')})}/></label><h3>Assign managers</h3><p>Admin and HR can review workspace requests. An assigned manager can review only their listed staff. One reviewer’s decision is final.</p><div className="leave-form-grid">{data.employees.filter(e=>e.active).map(e=><label key={e.id}>{e.name}<select value={policy.managers[e.id]||''} onChange={ev=>{const managers={...policy.managers};if(ev.target.value)managers[e.id]=ev.target.value;else delete managers[e.id];setPolicy({...policy,managers});}}><option value="">Admin / HR only</option>{data.members.filter(m=>m.employeeId!==e.id).map(m=><option key={m.userId} value={m.userId}>{m.name}</option>)}</select></label>)}</div><button className="button primary">Save policy</button></fieldset></form></section></div>}
+  {tab!=='settings'&&<section className="leave-balance-section">
+<div className="card-heading">
+<div>
+<h2>Leave balances</h2>
+<p>Available balance reserves pending requests.</p>
+</div>
+<label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)}>{data.employees.map(e=>
+<option key={e.id} value={e.id}>{e.name}{!e.active?' (inactive)':''}</option>)}</select>
+</label>
+</div>
+<div className="leave-balances">{leaveTypes.map(type=>{const quota=data.quotas.find(q=>q.employeeId===employee&&q.type===type);const b=balance(requests,employee,type,year,quota?.units||0);return <section className="card leave-balance" key={type}>
+<span>{leaveLabels[type]}</span>
+<h2>{quota?b.available:'—'} <small>days available</small>
+</h2>
+<p>{quota?`${b.entitlement} allocated · ${b.used} used · ${b.pending} pending`:'Admin has not set this entitlement.'}</p>
+</section>;})}</div>
+</section>}
+  {apply&&<LeaveDialog label="Apply for leave" busy={busy} onClose={()=>setApply(false)}>
+<section className="card leave-form">
+<div className="card-heading">
+<div>
+<h2>Apply for leave</h2>
+<p>Submission reserves your balance until a decision is made.</p>
+</div>
+<button className="button secondary" disabled={busy} onClick={()=>setApply(false)}>Close</button>
+</div>
+<div aria-live="polite">{error&&<p className="error-banner" role="alert">{error}</p>}</div>
+<form onSubmit={e=>{submit(e).catch(()=>setError('Could not read the attachment. Please choose it again.'));}}>
+<fieldset disabled={busy}>
+<div className="leave-form-grid">
+<label>Employee<select name="employeeId" defaultValue={data.employeeId||employee} required>{data.employees.filter(e=>e.active&&(data.role!=='staff'||e.id===data.employeeId)).map(e=>
+<option key={e.id} value={e.id}>{e.name}</option>)}</select>
+</label>
+<label>Leave type<select name="type">{leaveTypes.map(t=>
+<option key={t} value={t}>{leaveLabels[t]}{data.policy.attachment.includes(t)?' · document required':''}</option>)}</select>
+</label>
+<label>From<input type="date" name="start" min={`${year}-01-01`} max={`${year}-12-31`} required/>
+</label>
+<label>To<input type="date" name="end" min={`${year}-01-01`} max={`${year}-12-31`} required/>
+</label>
+<label>Duration<select name="part">
+<option value="full">Full day(s)</option>
+<option value="am">Half day · morning</option>
+<option value="pm">Half day · afternoon</option>
+</select>
+</label>
+<label>Supporting document<input name="file" type="file" accept="application/pdf,image/jpeg,image/png"/>
+<small>PDF, JPG or PNG · maximum 2 MB · private to applicant and approvers</small>
+</label>
+</div>
+<label>Reason<textarea name="reason" required maxLength={1000} rows={3}/>
+</label>
+<p className="muted">Working-day leave uses the employee schedule and configured holidays. Calendar-day types: {data.policy.calendar.map(t=>leaveLabels[t]).join(', ')||'none'}. Requests crossing years must be submitted separately.</p>
+<div className="leave-form-footer">
+<button type="button" className="button secondary" disabled={busy} onClick={()=>setApply(false)}>Cancel</button>
+<button className="button primary" disabled={busy}>{busy?'Saving…':'Submit request'}</button>
+</div>
+</fieldset>
+</form>
+</section>
+</LeaveDialog>}
+  {tab==='requests'&&<section className="card">
+<div className="card-heading">
+<div>
+<h2>Leave requests</h2>
+<p>Staff see their own requests. Assigned managers also see their team.</p>
+</div>
+<label>Status<select value={filter} onChange={e=>setFilter(e.target.value)}>{['all','pending','approved','rejected','cancel_requested','cancelled'].map(s=>
+<option key={s} value={s}>{s.replaceAll('_',' ')}</option>)}</select>
+</label>
+</div>
+<div className="table-scroll">
+<table>
+<thead>
+<tr>
+<th>Employee / type</th>
+<th>Dates</th>
+<th>Days</th>
+<th>Status</th>
+<th>Details</th>
+<th>Actions</th>
+</tr>
+</thead>
+<tbody>{filtered.slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(r=>
+<tr key={r.id}>
+<td>
+<strong>{data.employees.find(e=>e.id===r.employeeId)?.name||'Employee'}</strong>
+<br/>{leaveLabels[r.type]}</td>
+<td>{r.days[0]?.date} → {r.days.at(-1)?.date}{r.days.length===1&&r.days[0].part!=='full'&&<small> · {r.days[0].part.toUpperCase()}</small>}</td>
+<td>{units(r.days)/2}</td>
+<td>
+<span className={'leave-status '+r.status}>{r.status.replaceAll('_',' ')}</span>
+</td>
+<td>
+<details>
+<summary>View details</summary>
+<p>{r.reason}</p>{r.reviewNote&&<p>Reviewer: {r.reviewNote}</p>}{r.attachment&&<a className="button secondary" href={'/api/leave/attachment?id='+r.id}>
+<Download size={14}/>Document</a>}</details>
+</td>
+<td>
+<div className="leave-actions">{r.canReview&&['pending','cancel_requested'].includes(r.status)&&<>
+<button className="button secondary" disabled={busy} onClick={()=>{setNote('');setReview({id:r.id,action:r.status==='pending'?'approve':'approve-cancel'});}}>
+<Check size={14}/>Approve{r.status==='cancel_requested'?' cancellation':''}</button>
+<button className="button danger-outline" disabled={busy} onClick={()=>{setNote('');setReview({id:r.id,action:r.status==='pending'?'reject':'reject-cancel'});}}>
+<X size={14}/>Reject</button>
+</>}{r.own&&['pending','approved'].includes(r.status)&&<button className="button secondary" disabled={busy} onClick={()=>{setNote('');setReview({id:r.id,action:'cancel'});}}>{r.status==='approved'?'Request cancellation':'Cancel request'}</button>}</div>
+</td>
+</tr>)}</tbody>
+</table>{!filtered.length&&<div className="empty-state">
+<CalendarDays size={28}/>
+<h3>No requests here yet</h3>
+<p>Submitted leave will appear here with its approval status.</p>
+</div>}</div>
+</section>}
+  {review&&<LeaveDialog label="Review leave request" busy={busy} onClose={()=>setReview(null)}>
+<section className="card leave-form">
+<h2>Confirm {review.action.replaceAll('-',' ')}</h2>
+<p>{review.action==='cancel'?'Pending leave is cancelled immediately. Approved leave needs cancellation approval before its balance is restored.':'This decision updates the leave balance. You cannot approve your own request.'}</p>
+<div aria-live="polite">{error&&<p className="error-banner" role="alert">{error}</p>}</div>
+<form onSubmit={async e=>{e.preventDefault();if(await save({...review,note}))setReview(null);}}>
+<label>Review note{review.action.startsWith('reject')?' (required)':''}<textarea maxLength={1000} required={review.action.startsWith('reject')} value={note} onChange={e=>setNote(e.target.value)}/>
+</label>
+<div className="leave-actions">
+<button className="button primary" disabled={busy}>Confirm</button>
+<button type="button" className="button secondary" disabled={busy} onClick={()=>setReview(null)}>Back</button>
+</div>
+</form>
+</section>
+</LeaveDialog>}
+  {tab==='calendar'&&<section className="card">
+<div className="card-heading">
+<div>
+<h2>Team leave calendar</h2>
+<p>Approved leave only. Medical documents and reasons stay in request details.</p>
+</div>
+<label>Month<select value={month} onChange={e=>setMonth(Number(e.target.value))}>{Array.from({length:12},(_,i)=>
+<option key={i} value={i+1}>{new Date(2026,i,1).toLocaleString('en',{month:'long'})}</option>)}</select>
+</label>
+</div>
+<div className="leave-calendar-wrap">
+<div className="leave-calendar">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>
+<div className="leave-weekday" key={d}>{d}</div>)}{Array.from({length:offset},(_,i)=>
+<div key={'blank'+i} className="leave-day blank"/>)}{Array.from({length:daysInMonth},(_,i)=>{const date=`${year}-${String(month).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`;return <div key={date} className="leave-day">
+<strong>{i+1}</strong>{data.policy.holidays.includes(date)&&<small>Public holiday</small>}{requests.filter(r=>['approved','cancel_requested'].includes(r.status)&&r.days.some(d=>d.date===date)).map(r=>
+<span className="leave-calendar-event" key={r.id}>{data.employees.find(e=>e.id===r.employeeId)?.name}<small>{r.days.find(d=>d.date===date)?.part==='full'?'Full day':r.days.find(d=>d.date===date)?.part.toUpperCase()}</small>
+</span>)}</div>;})}</div>
+</div>
+</section>}
+  {tab==='settings'&&data.role==='admin'&&policy&&<div className="leave-settings">
+<section className="card leave-form">
+<h2>Set entitlements · {year}</h2>
+<p>Apply an allocation to all active staff, or set a different allowance for one employee. This replaces the allocation; it does not add days.</p>
+<form onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);await save({action:'quota',year,employeeId:f.get('employeeId'),type:f.get('type'),days:f.get('days')});}}>
+<fieldset disabled={busy}>
+<div className="leave-form-grid">
+<label>Employee<select name="employeeId">
+<option value="all">All active staff</option>{data.employees.filter(e=>e.active).map(e=>
+<option key={e.id} value={e.id}>{e.name}</option>)}</select>
+</label>
+<label>Leave type<select name="type">{leaveTypes.map(t=>
+<option key={t} value={t}>{leaveLabels[t]}</option>)}</select>
+</label>
+<label>Allocated days<input name="days" type="number" min="0" max="366" step="0.5" required/>
+</label>
+</div>
+<button className="button primary">Save entitlement</button>
+</fieldset>
+</form>
+<p className="muted">New staff need an allocation. Balances are separate for each year; there is no automatic accrual, carry-forward or prorating.</p>
+</section>
+<section className="card leave-form">
+<h2>
+<Settings2 size={19}/> Leave policy</h2>
+<p>Configure your company policy. MC and Outpatient are separate balances in this module.</p>
+<form onSubmit={async e=>{e.preventDefault();await save({action:'policy',policy:{...policy,holidays:policy.holidays.map(d=>d.trim()).filter(Boolean)}});}}>
+<fieldset disabled={busy}>
+<div className="table-scroll">
+<table>
+<thead>
+<tr>
+<th>Leave type</th>
+<th>Count calendar days</th>
+<th>Require document</th>
+</tr>
+</thead>
+<tbody>{leaveTypes.map(t=>
+<tr key={t}>
+<td>{leaveLabels[t]}</td>
+<td>
+<input aria-label={'Calendar days for '+leaveLabels[t]} type="checkbox" checked={policy.calendar.includes(t)} onChange={e=>setPolicy({...policy,calendar:e.target.checked?[...policy.calendar,t]:policy.calendar.filter(x=>x!==t)})}/>
+</td>
+<td>
+<input aria-label={'Document required for '+leaveLabels[t]} type="checkbox" checked={policy.attachment.includes(t)} onChange={e=>setPolicy({...policy,attachment:e.target.checked?[...policy.attachment,t]:policy.attachment.filter(x=>x!==t)})}/>
+</td>
+</tr>)}</tbody>
+</table>
+</div>
+<label>Public holidays (one date per line, YYYY-MM-DD)<textarea rows={5} value={policy.holidays.join('\n')} onChange={e=>setPolicy({...policy,holidays:e.target.value.split('\n')})}/>
+</label>
+<h3>Assign managers</h3>
+<p>Admin and HR can review workspace requests. An assigned manager can review only their listed staff. One reviewer’s decision is final.</p>
+<div className="leave-form-grid">{data.employees.filter(e=>e.active).map(e=>
+<label key={e.id}>{e.name}<select value={policy.managers[e.id]||''} onChange={ev=>{const managers={...policy.managers};if(ev.target.value)managers[e.id]=ev.target.value;else delete managers[e.id];setPolicy({...policy,managers});}}>
+<option value="">Admin / HR only</option>{data.members.filter(m=>m.employeeId!==e.id).map(m=>
+<option key={m.userId} value={m.userId}>{m.name}</option>)}</select>
+</label>)}</div>
+<button className="button primary">Save policy</button>
+</fieldset>
+</form>
+</section>
+</div>}
   </>}
  </div>;
 }

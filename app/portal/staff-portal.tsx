@@ -11,7 +11,7 @@ export default function StaffPortal() {
    if (pending || stopped || document.visibilityState !== 'visible') return;
    pending = true;
    try {
-    const response = await fetch('/api/portal', { cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
+    const response = await fetch('/api/portal?from='+month+'-01&to='+new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10), { cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
     if (response.status === 401 || response.status === 403) { window.location.assign('/'); return; }
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not load attendance.');
@@ -19,10 +19,12 @@ export default function StaffPortal() {
    } catch (e) { if (!stopped) setError(e instanceof Error ? e.message : 'Connection failed. Retrying automatically.'); }
    finally { pending = false; }
   }
+  setData(null);
+  if(!/^\d{4}-\d{2}$/.test(month)) return;
   load(); const timer = setInterval(load, 15000);
   document.addEventListener('visibilitychange', load); window.addEventListener('online', load);
   return () => { stopped = true; controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', load); window.removeEventListener('online', load); };
- }, []);
+ }, [month]);
  const workspace: Workspace | null = data ? { name: data.name, employees: [{ ...data.employee, deviceUserId: null, createdAt: '' }], schedules: data.schedules, punches: data.punches.map(p => ({ ...p, note: '', deviceId: null })), devices: [], today: dateMY() } : null;
  const records = workspace && /^\d{4}-\d{2}$/.test(month) ? monthDates(month, dateMY()).filter(d => d <= dateMY()).flatMap(d => recordsForDay(workspace, d)) : [];
  const worked = records.reduce((total, r) => total + r.paidMinutes, 0);
