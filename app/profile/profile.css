@@ -1,0 +1,12 @@
+.profile-page {max-width:1100px; min-width:0;}
+.profile-card {padding:28px; margin-top:24px;}
+.profile-card > p {color:var(--muted); margin:8px 0 24px;}
+.profile-card fieldset {border:0;padding:0;margin:0;min-width:0;}
+.profile-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin:24px 0;}
+.profile-grid label,.profile-picker {display:grid;gap:8px;min-width:0;font-size:13px;}
+.profile-grid input,.profile-picker select {width:100%;min-width:0;min-height:44px;}
+.profile-picker {max-width:440px;}
+.profile-facts dt {color:var(--muted);font-size:12px;margin-bottom:7px;}
+.profile-facts dd {margin:0;overflow-wrap:anywhere;}
+.profile-footer {display:flex;justify-content:flex-end;margin-top:24px;}
+@media(max-width:640px){.profile-card{padding:20px}.profile-grid{grid-template-columns:1fr;gap:18px;}.profile-footer .button{width:100%;justify-content:center;}}

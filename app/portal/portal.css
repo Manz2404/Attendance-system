@@ -1,0 +1,13 @@
+.staff-portal { min-width:0; }
+.staff-portal .staff-welcome { flex-wrap:wrap; }
+.staff-portal .staff-welcome > div { flex:1; min-width:0; }
+.staff-portal .staff-welcome h1 { font-size:calc(28px * var(--text-scale,1)); overflow-wrap:anywhere; }
+.staff-portal .staff-leave-link { flex-shrink:0; }
+.staff-portal .page-header label { display:grid; gap:8px; min-width:0; }
+.staff-portal .table-scroll { overflow-x:auto; }
+.staff-portal table { min-width:620px; width:100%; }
+.staff-portal th,.staff-portal td { padding:16px; text-align:left; }
+@media(max-width:640px) {
+ .staff-portal .staff-welcome h1 { font-size:calc(24px * var(--text-scale,1)); }
+ .staff-portal .staff-leave-link { width:100%; justify-content:center; }
+}

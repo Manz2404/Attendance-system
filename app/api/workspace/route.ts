@@ -1,10 +1,12 @@
+import { attendanceRange } from '@/lib/attendance-range';
+import { validateProfile } from '@/lib/staff-profile';
 import { writeAudit } from '@/lib/audit';
 import { workspaceAccess, canManageAttendance, canWriteWorkspace } from '@/lib/workspace-access';
 import { normalizePhone } from '@/lib/whatsapp.mjs';
 import { normalizeProfilePhoto } from '@/lib/profile-photo.mjs';
-import { and, eq, inArray, asc } from 'drizzle-orm';
+import { and, eq, inArray, asc, gte, lt } from 'drizzle-orm';
 import { getDb, type Connection } from '@/db';
-import { workspaces, employees, employeePhotos, employeeContacts, schedules, devices, punches, employeePins, employeeFaces, kioskAttempts } from '@/db/schema';
+import { workspaces, employees, employeePhotos, employeeContacts, staffProfiles, schedules, devices, punches, employeePins, employeeFaces, kioskAttempts } from '@/db/schema';
 import { hashPin, validPin, hashToken } from '@/lib/password.mjs';
 import { getCurrentUser } from '@/lib/auth';
 import { allowedOrigin, readJSON, RequestError } from '@/lib/request';
@@ -28,28 +30,32 @@ function timeField(value: unknown, label: string) { const t = field(value, label
 function numberField(value: unknown, label: string, max: number) { if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > max) throw new InputError(`${label} must be between 0 and ${max}.`); return value; }
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getCurrentUser(); if (!user) return json({ error: 'Please sign in to continue.' }, 401);
   try {
     const access = await workspaceAccess(user);
     if (!canManageAttendance(access)) return json({ error: 'You do not have access to workspace records.' }, 403);
+    let range;
+    try { range = attendanceRange(new URL(request.url).searchParams); } catch(error) { return json({error:error instanceof Error ? error.message : 'Invalid dates.'},400); }
     const db = getDb(), owner = access!.ownerId;
-    const [ws, staff, shifts, logs, hardware, pins, faces, photos, contacts] = await Promise.all([
+    const [ws, staff, shifts, logs, hardware, pins, faces, photos, contacts, profiles] = await Promise.all([
       db.select().from(workspaces).where(eq(workspaces.ownerId, owner)).limit(1),
       db.select().from(employees).where(eq(employees.ownerId, owner)).orderBy(asc(employees.name)),
       db.select().from(schedules).where(eq(schedules.ownerId, owner)),
-      db.select().from(punches).where(eq(punches.ownerId, owner)).orderBy(asc(punches.timestamp)),
+      db.select().from(punches).where(and(eq(punches.ownerId, owner),gte(punches.timestamp,range.from),lt(punches.timestamp,range.until))).orderBy(asc(punches.timestamp)),
       db.select().from(devices).where(eq(devices.ownerId, owner)),
       db.select({ employeeId: employeePins.employeeId }).from(employeePins).where(eq(employeePins.ownerId, owner)),
       db.select({ employeeId: employeeFaces.employeeId }).from(employeeFaces).where(eq(employeeFaces.ownerId, owner)),
       db.select().from(employeePhotos).where(eq(employeePhotos.ownerId, owner)),
       db.select().from(employeeContacts).where(eq(employeeContacts.ownerId, owner)),
+      access!.role === 'admin' ? db.select({employeeId:staffProfiles.employeeId,job:staffProfiles.job}).from(staffProfiles).where(eq(staffProfiles.ownerId,owner)) : Promise.resolve([]),
     ]);
+    const jobById = new Map(profiles.map(p => [p.employeeId, JSON.parse(p.job)]));
     const phoneById = new Map(contacts.map(c => [c.employeeId, c.phone]));
     const photoById = new Map(photos.map(p => [p.employeeId, p.photo]));
     const hasPin = new Set(pins.map(p => p.employeeId));
     const hasFace = new Set(faces.map(f => f.employeeId));
-    return json({ initialized: !!ws[0], name: ws[0]?.name ?? 'My workspace', employees: staff.map(e => ({ ...e, phone: phoneById.get(e.id) ?? null, profilePhoto: photoById.get(e.id) ?? null, kioskPinSet: hasPin.has(e.id), faceEnrolled: hasFace.has(e.id) })), schedules: shifts, punches: logs, devices: hardware, today: dateMY() });
+    return json({ initialized: !!ws[0], name: ws[0]?.name ?? 'My workspace', employees: staff.map(e => ({ ...e, job: jobById.get(e.id), phone: phoneById.get(e.id) ?? null, profilePhoto: photoById.get(e.id) ?? null, kioskPinSet: hasPin.has(e.id), faceEnrolled: hasFace.has(e.id) })), schedules: shifts, punches: logs, devices: hardware, today: dateMY() });
   } catch (error) { console.error('Attendance read failed', error instanceof Error ? error.name : 'server error'); return json({ error: 'Could not load your workspace. Please try again.' }, 500); }
 }
 
@@ -137,6 +143,11 @@ export async function POST(request: Request) {
     }
     if (action === 'workspace') { await db.update(workspaces).set({ name: field(body.name, 'Workspace name', 80) }).where(eq(workspaces.ownerId, owner)); return saved({ message: 'Workspace updated.' }); }
     if (action === 'employee') {
+      let job: Record<string,string> | undefined;
+      if (body.job !== undefined) {
+        if (currentAccess.role !== 'admin') return json({error:'Only Admin can update job information.'},403);
+        try { job = validateProfile(body.job,true); } catch(error) { throw new InputError(error instanceof Error ? error.message : 'Invalid job information.'); }
+      }
       let phone: string | null | undefined;
       if (body.phone !== undefined) {
         try { phone = normalizePhone(body.phone); }
@@ -173,6 +184,10 @@ export async function POST(request: Request) {
       if (profilePhoto !== undefined) {
         if (profilePhoto === null) await db.delete(employeePhotos).where(and(eq(employeePhotos.ownerId, owner), eq(employeePhotos.employeeId, employeeId)));
         else await db.insert(employeePhotos).values({ employeeId, ownerId: owner, photo: profilePhoto }).onDuplicateKeyUpdate({ set: { photo: profilePhoto } });
+      }
+      if (job !== undefined) {
+        const jobValues = {job:JSON.stringify(job),updatedAt:new Date().toISOString()};
+        await db.insert(staffProfiles).values({employeeId,ownerId:owner,personal:'{}',...jobValues}).onDuplicateKeyUpdate({set:jobValues});
       }
       return saved({ message: id ? 'Employee updated.' : 'Employee added.' }, employeeId);
     }
@@ -249,3 +264,4 @@ export async function POST(request: Request) {
     return json({ error: 'Could not save your changes. Please try again.' }, 500);
   }
 }
+

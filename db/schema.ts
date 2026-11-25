@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, text, int, boolean, mysqlEnum, index, uniqueIndex } from 'drizzle-orm/mysql-core';
+import { mysqlTable, varchar, text, int, boolean, mysqlEnum, index, uniqueIndex, customType } from 'drizzle-orm/mysql-core';
 
 const id = () => varchar('id', { length: 36 }).primaryKey();
 const instant = (name: string) => varchar(name, { length: 24 });
@@ -128,3 +128,29 @@ export const userAppearance = mysqlTable('hadir_user_appearance', {
   settings: text('settings').notNull(),
   updatedAt: instant('updated_at').notNull(),
 });
+
+const leaveLongText = customType<{ data: string; driverData: string }>({ dataType() { return 'longtext'; } });
+export const leaveSettings = mysqlTable('hadir_leave_settings', {
+ ownerId: varchar('owner_id', { length: 36 }).primaryKey(), settings: leaveLongText('settings').notNull(),
+});
+export const leaveEntitlements = mysqlTable('hadir_leave_entitlements', {
+ id: varchar('id', { length: 100 }).primaryKey(), ownerId: varchar('owner_id', { length: 36 }).notNull(),
+ employeeId: varchar('employee_id', { length: 36 }).notNull(), year: int('year').notNull(),
+ type: varchar('type', { length: 20 }).notNull(), units: int('units').notNull(),
+});
+export const leaveRequests = mysqlTable('hadir_leave_requests', {
+ id: id(), ownerId: varchar('owner_id', { length: 36 }).notNull(), employeeId: varchar('employee_id', { length: 36 }).notNull(),
+ year: int('year').notNull(), type: varchar('type', { length: 20 }).notNull(), days: text('days').notNull(),
+ reason: varchar('reason', { length: 1000 }).notNull(), status: varchar('status', { length: 30 }).notNull(),
+ requestedBy: varchar('requested_by', { length: 36 }).notNull(), reviewedBy: varchar('reviewed_by', { length: 36 }),
+ reviewNote: varchar('review_note', { length: 1000 }).notNull(), createdAt: instant('created_at').notNull(), updatedAt: instant('updated_at').notNull(),
+});
+export const leaveAttachments = mysqlTable('hadir_leave_attachments', {
+ requestId: varchar('request_id', { length: 36 }).primaryKey(), mime: varchar('mime', { length: 40 }).notNull(), data: leaveLongText('data').notNull(),
+});
+
+export const staffProfiles = mysqlTable('hadir_staff_profiles', {
+ employeeId: varchar('employee_id',{length:36}).primaryKey().references(()=>employees.id,{onDelete:'cascade'}),
+ ownerId: varchar('owner_id',{length:36}).notNull().references(()=>workspaces.ownerId),
+ personal: text('personal').notNull(), job: text('job').notNull(), updatedAt: instant('updated_at').notNull(),
+},t=>[index('hadir_staff_profiles_owner_idx').on(t.ownerId)]);
